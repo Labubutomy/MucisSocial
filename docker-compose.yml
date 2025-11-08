@@ -1,0 +1,8 @@
+include:
+  - infrastructure/docker-compose.yml
+  - apps/docker-compose.yml
+  - services/docker-compose.yml
+
+networks:
+  music-network:
+    driver: bridge
