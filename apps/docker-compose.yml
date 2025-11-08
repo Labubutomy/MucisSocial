@@ -1,0 +1,9 @@
+services:
+  web-client:
+    build:
+      context: ./web
+    ports:
+      - "80:80"
+    networks:  
+      - music-network
+    restart: unless-stopped

@@ -1,4 +1,4 @@
-.PHONY: dev dev-up dev-down infra nfra-up infra-down
+.PHONY: dev dev-up dev-down apps apps-up apps-down infra nfra-up infra-down
 
 
 dev:
@@ -8,7 +8,17 @@ dev-up: dev-build
 	docker compose up -d
 
 dev-down:
-	docker compose -f docker-compose.yml down
+	docker compose -f down
+
+
+apps:
+	docker compose -f apps/docker-compose.yml up -d --build
+
+apps-up:
+	docker compose -f apps/docker-compose.yml up -d
+
+apps-down:
+	docker compose -f apps/docker-compose.yml down
 
 
 infra:
