@@ -1,4 +1,5 @@
-import { ButtonHTMLAttributes, forwardRef } from 'react'
+import { forwardRef } from 'react'
+import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@shared/lib/cn'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline'
@@ -18,8 +19,7 @@ const variantStyles: Record<ButtonVariant, string> = {
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
   secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
   ghost: 'bg-transparent text-foreground hover:bg-muted/40',
-  outline:
-    'border border-border bg-transparent text-foreground hover:bg-muted/40',
+  outline: 'border border-border bg-transparent text-foreground hover:bg-muted/40',
 }
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -40,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       ...props
     },
-    ref,
+    ref
   ) => {
     return (
       <button
@@ -50,7 +50,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           variantStyles[variant],
           sizeStyles[size],
           fullWidth && 'w-full',
-          className,
+          className
         )}
         disabled={disabled || loading}
         {...props}
@@ -61,8 +61,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         <span className="flex items-center gap-2">{children}</span>
       </button>
     )
-  },
+  }
 )
 
 Button.displayName = 'Button'
-
