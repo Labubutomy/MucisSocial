@@ -1,0 +1,25 @@
+services:
+  upload:
+    build:
+      context: ./upload
+      dockerfile: Dockerfile
+    container_name: upload-service
+    environment:
+      - GRPC_PORT=50051
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=tracks
+      - REDPANDA_BROKERS=redpanda:9092
+      - TRANSCODER_TOPIC=transcoder-tasks
+      - TRACK_SERVICE_ADDR=track-service:50052
+    ports:
+      - "50051:50051"
+    networks:
+      - music-network
+    depends_on:
+      minio:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped

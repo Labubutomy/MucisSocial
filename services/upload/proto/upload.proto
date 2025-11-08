@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package upload;
+
+option go_package = "github.com/MucisSocial/upload/proto";
+
+service UploadService {
+  rpc UploadTrack(stream UploadTrackRequest) returns (UploadTrackResponse);
+}
+
+message UploadTrackRequest {
+  oneof data {
+    TrackMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+message TrackMetadata {
+  string artist_id = 1;
+  string track_name = 2;
+}
+
+message UploadTrackResponse {
+  bool success = 1;
+  string message = 2;
+  string track_id = 3;
+}
+

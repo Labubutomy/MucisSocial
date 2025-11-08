@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package track;
+
+option go_package = "github.com/MucisSocial/upload/proto";
+
+message CreateTrackRequest {
+  string artist_id = 1;
+  string name = 2;
+  int64 duration = 3;
+}
+
+message CreateTrackResponse {
+  string track_id = 1;
+}
+
+message UpdateTrackLocationRequest {
+  string track_id = 1;
+  string storage_url = 2;
+}
+
+message UpdateTrackLocationResponse {
+  bool success = 1;
+}
+
+service TrackService {
+  rpc CreateTrack (CreateTrackRequest) returns (CreateTrackResponse);
+  rpc UpdateTrackLocation (UpdateTrackLocationRequest) returns (UpdateTrackLocationResponse);
+}
