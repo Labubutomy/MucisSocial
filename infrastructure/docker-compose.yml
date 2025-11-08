@@ -1,0 +1,42 @@
+services:
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+      - ./minio/minio.conf:/etc/minio/minio.conf
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - music-network
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/init-buckets.sh"]
+    volumes:
+      - ./minio/init-buckets.sh:/scripts/init-buckets.sh:ro
+    networks:
+      - music-network
+    restart: "no"
+
+volumes:
+  minio_data:
+    driver: local
+
+networks:
+  music-network:
+    driver: bridge
