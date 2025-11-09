@@ -7,7 +7,8 @@ WORKDIR /app
 RUN apk add --no-cache git netcat-openbsd
 
 # Copy go mod files
-COPY go.mod go.sum ./
+COPY go.mod ./
+COPY go.su[m] ./
 RUN go mod download && go mod verify
 
 # Copy source code
