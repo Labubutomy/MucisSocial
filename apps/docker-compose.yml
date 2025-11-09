@@ -2,8 +2,13 @@ services:
   web-client:
     build:
       context: ./web
-    ports:
-      - "80:80"
     networks:  
+      - music-network
+    restart: unless-stopped
+
+  player:
+    build:
+      context: ./player
+    networks:
       - music-network
     restart: unless-stopped
