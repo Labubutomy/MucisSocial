@@ -69,7 +69,7 @@ func (s *Service) CreateTrack(ctx context.Context, title string, artistIDs []uui
 }
 
 // CreateTrackGRPC создать трек через gRPC (принимает массив artist_ids)
-func (s *Service) CreateTrackGRPC(ctx context.Context, title string, artistIDs []uuid.UUID, durationSec int, genre string) (*Track, error) {
+func (s *Service) CreateTrackGRPC(ctx context.Context, title string, artistIDs []uuid.UUID, genre string) (*Track, error) {
 	artists, err := s.validateAndGetArtists(ctx, artistIDs)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,6 @@ func (s *Service) CreateTrackGRPC(ctx context.Context, title string, artistIDs [
 		Title:     title,
 		Artists:   artists,
 		Genre:     genre,
-		Duration:  durationSec,
 		Status:    StatusUploaded,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -118,8 +117,8 @@ func (s *Service) DeleteTrack(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// UpdateTrackURLs обновить URLs трека (cover_url, audio_url)
-func (s *Service) UpdateTrackURLs(ctx context.Context, trackID uuid.UUID, coverURL, audioURL string) error {
+// UpdateTrackURLs обновить URLs трека (cover_url, audio_url, duration_sec)
+func (s *Service) UpdateTrackURLsAndDuration(ctx context.Context, trackID uuid.UUID, coverURL, audioURL string, durationSec int) error {
 	// Используем специальный метод для обновления только URLs
-	return s.repo.UpdateURLs(ctx, trackID, coverURL, audioURL)
+	return s.repo.UpdateURLsAndDuration(ctx, trackID, coverURL, audioURL, durationSec)
 }

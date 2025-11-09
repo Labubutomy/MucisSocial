@@ -31,9 +31,6 @@ func (h *GRPCHandler) CreateTrack(ctx context.Context, req *tracks.CreateTrackRe
 	if len(req.ArtistIds) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "at least one artist_id is required")
 	}
-	if req.DurationSec < 0 {
-		return nil, status.Error(codes.InvalidArgument, "duration_sec must be non-negative")
-	}
 
 	// Парсим UUID артистов
 	artistIDs, err := parseUUIDs(req.ArtistIds)
@@ -42,7 +39,7 @@ func (h *GRPCHandler) CreateTrack(ctx context.Context, req *tracks.CreateTrackRe
 	}
 
 	// Создаем трек через сервис
-	track, err := h.service.CreateTrackGRPC(ctx, req.Title, artistIDs, int(req.DurationSec), req.Genre)
+	track, err := h.service.CreateTrackGRPC(ctx, req.Title, artistIDs, req.Genre)
 	if err != nil {
 		if err == ErrNotFound {
 			return nil, status.Error(codes.NotFound, "one or more artists not found")
@@ -73,8 +70,12 @@ func (h *GRPCHandler) UpdateTrackInfo(ctx context.Context, req *tracks.UpdateTra
 		return nil, status.Error(codes.InvalidArgument, "invalid track_id format")
 	}
 
+	if req.duration_sec < 0 {
+		return nil, status.Error(codes.InvalidArgument, "negative track duration")
+	}
+
 	// Обновляем URLs трека
-	err = h.service.UpdateTrackURLs(ctx, trackID, req.CoverUrl, req.AudioUrl)
+	err = h.service.UpdateTrackURLsAndDuration(ctx, trackID, req.CoverUrl, req.AudioUrl, int(req.duration_sec))
 	if err != nil {
 		if err == ErrNotFound {
 			return nil, status.Error(codes.NotFound, "track not found")

@@ -151,8 +151,8 @@ func (r *Repository) Update(ctx context.Context, track *Track) error {
 	return r.CreateTrackArtists(ctx, track.ID, track.Artists)
 }
 
-// UpdateURLs обновить только URLs трека (cover_url, audio_url) без изменения других полей
-func (r *Repository) UpdateURLs(ctx context.Context, trackID uuid.UUID, coverURL, audioURL string) error {
+// UpdateURLs обновить только URLs трека (cover_url, audio_url, duration) без изменения других полей
+func (r *Repository) UpdateURLsAndDuration(ctx context.Context, trackID uuid.UUID, coverURL, audioURL string, durationSec int) error {
 	// Строим запрос динамически в зависимости от того, какие поля нужно обновить
 	query := `UPDATE tracks SET updated_at = NOW()`
 	args := []interface{}{}
@@ -168,6 +168,10 @@ func (r *Repository) UpdateURLs(ctx context.Context, trackID uuid.UUID, coverURL
 
 	query += fmt.Sprintf(", audio_url = $%d", argPos)
 	args = append(args, audioURL)
+	argPos++
+
+	query += fmt.Sprintf(", duration_seconds = $%d", durationSec)
+	args = append(args, durationSec)
 	argPos++
 
 	// Если ничего не обновляется, возвращаем ошибку
