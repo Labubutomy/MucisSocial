@@ -12,9 +12,37 @@ services:
       - MINIO_BUCKET=tracks
       - REDPANDA_BROKERS=redpanda:9092
       - TRANSCODER_TOPIC=transcoder-tasks
-      - TRACK_SERVICE_ADDR=track-service:50052
+      - TRACK_SERVICE_ADDR=tracks:50052
     ports:
       - "50051:50051"
+    networks:
+      - music-network
+    depends_on:
+      minio:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  transcoder:
+    build:
+      context: ./transcoder
+      dockerfile: Dockerfile
+    container_name: transcoder-service
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - TRANSCODER_TOPIC=transcoder-tasks
+      - TRANSCODER_GROUP_ID=transcoder-group
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=tracks
+      - TRACK_SERVICE_ADDR=tracks:50052
+      - TRANSCODER_WORKDIR=/tmp/transcoder
+      - FFMPEG_PATH=ffmpeg
+      - FFPROBE_PATH=ffprobe
+    volumes:
+      - /tmp/transcoder:/tmp/transcoder
     networks:
       - music-network
     depends_on:
