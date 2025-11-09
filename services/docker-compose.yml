@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Users Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: music-social-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_users
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./users/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Users Service
+  users-service:
+    build:
+      context: ./users
+      dockerfile: Dockerfile
+    container_name: music-social-users
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=50051
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=music_social_users
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNS=25
+      - JWT_ACCESS_SECRET=your-super-secret-access-key-change-in-production
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
+      - JWT_ACCESS_EXPIRATION=15m
+      - JWT_REFRESH_EXPIRATION=168h
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway (Custom Go Gateway)
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: music-social-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - users-service
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+
+volumes:
+  postgres_data:
+
+networks:
+  music-network:
+    external: true
