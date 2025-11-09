@@ -33,6 +33,22 @@ services:
       - music-network
     restart: "no"
 
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      - web-client
+      - player
+      - cdn
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "8001:8001"
+    networks:
+      - music-network
+    restart: unless-stopped
+
 volumes:
   minio_data:
     driver: local
