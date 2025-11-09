@@ -103,10 +103,9 @@ func (h *Handler) handleAdminTracks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Title      string `json:"title"`
-		ArtistID   string `json:"artist_id"`
-		ArtistName string `json:"artist_name"`
-		Genre      string `json:"genre"`
+		Title     string   `json:"title"`
+		ArtistIDs []string `json:"artist_ids"` // Массив UUID артистов
+		Genre     string   `json:"genre"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -114,13 +113,19 @@ func (h *Handler) handleAdminTracks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	artistID, err := uuid.Parse(req.ArtistID)
-	if err != nil {
-		http.Error(w, "Invalid artist ID", http.StatusBadRequest)
+	if len(req.ArtistIDs) == 0 {
+		http.Error(w, "At least one artist_id is required", http.StatusBadRequest)
 		return
 	}
 
-	track, err := h.service.CreateTrack(r.Context(), req.Title, req.ArtistName, req.Genre, artistID)
+	// Парсим UUID артистов
+	artistIDs, err := parseUUIDs(req.ArtistIDs)
+	if err != nil {
+		http.Error(w, "Invalid artist ID: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	track, err := h.service.CreateTrack(r.Context(), req.Title, artistIDs, req.Genre)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -147,9 +152,9 @@ func (h *Handler) handleAdminTrack(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPut:
 		var req struct {
-			Title      string `json:"title"`
-			ArtistName string `json:"artist_name"`
-			Genre      string `json:"genre"`
+			Title     string   `json:"title"`
+			ArtistIDs []string `json:"artist_ids"` // Массив UUID артистов (опционально)
+			Genre     string   `json:"genre"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -157,7 +162,18 @@ func (h *Handler) handleAdminTrack(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := h.service.UpdateTrack(r.Context(), id, req.Title, req.ArtistName, req.Genre); err != nil {
+		// Парсим UUID артистов, если они переданы
+		var artistIDs []uuid.UUID
+		if len(req.ArtistIDs) > 0 {
+			var err error
+			artistIDs, err = parseUUIDs(req.ArtistIDs)
+			if err != nil {
+				http.Error(w, "Invalid artist ID: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if err := h.service.UpdateTrack(r.Context(), id, req.Title, artistIDs, req.Genre); err != nil {
 			if errors.Is(err, ErrNotFound) {
 				http.Error(w, "Track not found", http.StatusNotFound)
 				return

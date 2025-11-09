@@ -2,8 +2,9 @@ package internal
 
 import (
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Track статусы
@@ -16,34 +17,22 @@ const (
 
 // Track модель трека
 type Track struct {
-	ID         uuid.UUID `json:"id"`
-	Title      string    `json:"title"`
-	ArtistID   uuid.UUID `json:"artist_id"`
-	ArtistName string    `json:"artist_name"`
-	Genre      string    `json:"genre,omitempty"`
-	AudioURL   string    `json:"audio_url,omitempty"`
-	CoverURL   string    `json:"cover_url,omitempty"`
-	Duration   int       `json:"duration_seconds"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Artists   []Artist  `json:"artists"` // Массив артистов
+	Genre     string    `json:"genre,omitempty"`
+	AudioURL  string    `json:"audio_url,omitempty"`
+	CoverURL  string    `json:"cover_url,omitempty"`
+	Duration  int       `json:"duration_seconds"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Kafka события
-type TrackUploadedEvent struct {
-	TrackID    string `json:"track_id"`
-	Title      string `json:"title"`
-	ArtistID   string `json:"artist_id"`
-	ArtistName string `json:"artist_name"`
-	Genre      string `json:"genre"`
-}
-
-type TranscodingCompletedEvent struct {
-	TrackID  string `json:"track_id"`
-	Status   string `json:"status"`
-	AudioURL string `json:"audio_url"`
-	CoverURL string `json:"cover_url"`
-	Duration int    `json:"duration_seconds"`
+// Artist модель артиста
+type Artist struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
 
 // Ошибки
