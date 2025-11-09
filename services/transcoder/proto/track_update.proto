@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package track_update;
+
+option go_package = "github.com/MusicSocial/transcoder/proto";
+
+message UpdateTrackInfoRequest {
+  string track_id = 1;
+  string cover_url = 2;
+  string audio_url = 3;
+  int32 duration = 4;
+}
+
+message UpdateTrackInfoResponse {
+  bool success = 1;
+}
+
+service TrackService {
+  rpc UpdateTrackInfo (UpdateTrackInfoRequest) returns (UpdateTrackInfoResponse);
+}
+
+
