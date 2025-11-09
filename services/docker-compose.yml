@@ -44,3 +44,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  mock-api:
+    build:
+      context: ./mock_api
+    ports:
+      - "8100:8000"
+    networks:
+      - music-network
+    restart: unless-stopped
