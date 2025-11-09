@@ -542,7 +542,7 @@ func getEnv(key, defaultValue string) string {
 //	@Failure		400			{object}	ErrorResponse
 //	@Failure		404			{object}	ErrorResponse
 //	@Failure		500			{object}	ErrorResponse
-//	@Router			/artists/{artistId} [get]
+//	@Router			/api/v1/artists/{artistId} [get]
 func (g *Gateway) getArtistByIdHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	artistId := vars["artistId"]
@@ -575,7 +575,7 @@ func (g *Gateway) getArtistByIdHandler(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Success		200	{object}	map[string]interface{}
 //	@Failure		500	{object}	ErrorResponse
-//	@Router			/artists/trending [get]
+//	@Router			/api/v1/artists/trending [get]
 func (g *Gateway) getTrendingArtistsHandler(w http.ResponseWriter, r *http.Request) {
 	req := &artistpb.GetTrendingArtistsRequest{
 		Limit: 20, // Default limit
@@ -606,7 +606,7 @@ func (g *Gateway) getTrendingArtistsHandler(w http.ResponseWriter, r *http.Reque
 //	@Success		200	{object}	map[string]interface{}
 //	@Failure		400	{object}	ErrorResponse
 //	@Failure		500	{object}	ErrorResponse
-//	@Router			/artists/search [get]
+//	@Router			/api/v1/artists/search [get]
 func (g *Gateway) searchArtistsHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
