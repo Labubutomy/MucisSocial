@@ -1,27 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useUnit } from 'effector-react'
 import { routes } from '@shared/router'
 import { cn } from '@shared/lib/cn'
 import { Avatar } from '@shared/ui/avatar'
-
-const suggestionSeeds = [
-  'Новые релизы',
-  'Неоновый фанк',
-  'Синтвейв ночь',
-  'Лоуфай для работы',
-  'Электронный чилл',
-  'Инди-поп плейлист',
-]
+import {
+  $query,
+  $showDropdown,
+  $suggestionSeeds,
+  $suggestions,
+  focusChanged,
+  hoverChanged,
+  queryChanged,
+  searchSubmitted,
+  suggestionSelected,
+} from './model'
 
 export const AppHeader = () => {
-  const [query, setQuery] = useState('')
-  const [isFocused, setIsFocused] = useState(false)
-  const [isHoveringList, setIsHoveringList] = useState(false)
   const blurTimeoutRef = useRef<number | null>(null)
 
-  const navigateToHome = useUnit(routes.home.navigate)
+  const {
+    query,
+    suggestions,
+    suggestionSeeds,
+    showDropdown,
+    navigateToHome,
+    navigateToProfile,
+    changeQuery,
+    setFocus,
+    setHover,
+    submitSearch,
+    selectSuggestion,
+  } = useUnit({
+    query: $query,
+    suggestions: $suggestions,
+    suggestionSeeds: $suggestionSeeds,
+    showDropdown: $showDropdown,
+    navigateToHome: routes.home.navigate,
+    navigateToProfile: routes.profile.navigate,
+    changeQuery: queryChanged,
+    setFocus: focusChanged,
+    setHover: hoverChanged,
+    submitSearch: searchSubmitted,
+    selectSuggestion: suggestionSelected,
+  })
+
   const navigateToSearch = useUnit(routes.search.navigate)
-  const navigateToProfile = useUnit(routes.profile.navigate)
 
   useEffect(
     () => () => {
@@ -32,44 +55,25 @@ export const AppHeader = () => {
     []
   )
 
-  const suggestions = useMemo(() => {
-    if (!query) return suggestionSeeds
-    const lower = query.toLowerCase()
-    return suggestionSeeds.filter(item => item.toLowerCase().includes(lower))
-  }, [query])
-
-  const showDropdown = (isFocused || isHoveringList) && suggestions.length > 0
-
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = event => {
     event.preventDefault()
-    navigateToSearch({
-      params: {},
-      query: query ? { q: query } : {},
-    })
-    setIsFocused(false)
-    setIsHoveringList(false)
+    submitSearch()
   }
 
   const handleSuggestionClick = (value: string) => {
-    setQuery(value)
-    navigateToSearch({
-      params: {},
-      query: { q: value },
-    })
-    setIsFocused(false)
-    setIsHoveringList(false)
+    selectSuggestion(value)
   }
 
   const handleInputFocus = () => {
     if (blurTimeoutRef.current) {
       window.clearTimeout(blurTimeoutRef.current)
     }
-    setIsFocused(true)
+    setFocus(true)
   }
 
   const handleInputBlur = () => {
     blurTimeoutRef.current = window.setTimeout(() => {
-      setIsFocused(false)
+      setFocus(false)
     }, 120)
   }
 
@@ -118,7 +122,7 @@ export const AppHeader = () => {
             </svg>
             <input
               value={query}
-              onChange={event => setQuery(event.target.value)}
+              onChange={event => changeQuery(event.target.value)}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               placeholder="Поиск по трекам, артистам, плейлистам"
@@ -128,8 +132,8 @@ export const AppHeader = () => {
           {showDropdown && (
             <div
               className="absolute left-0 right-0 mt-3 rounded-2xl border border-border/60 bg-background shadow-xl shadow-black/20"
-              onMouseEnter={() => setIsHoveringList(true)}
-              onMouseLeave={() => setIsHoveringList(false)}
+              onMouseEnter={() => setHover(true)}
+              onMouseLeave={() => setHover(false)}
             >
               <ul className="flex flex-col divide-y divide-border/60">
                 {suggestions.map(item => (

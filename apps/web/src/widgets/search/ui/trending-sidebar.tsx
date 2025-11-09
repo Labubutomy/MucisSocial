@@ -2,7 +2,7 @@ import { SectionHeader } from '@shared/ui/section-header'
 
 export interface TrendingSidebarProps {
   items: { id: string; label: string }[]
-  onSelect: (id: string) => void
+  onSelect: (item: { id: string; label: string }) => void
 }
 
 export const TrendingSidebar = ({ items, onSelect }: TrendingSidebarProps) => (
@@ -13,7 +13,7 @@ export const TrendingSidebar = ({ items, onSelect }: TrendingSidebarProps) => (
         <li key={item.id}>
           <button
             type="button"
-            onClick={() => onSelect(item.id)}
+            onClick={() => onSelect(item)}
             className="flex w-full items-center justify-between rounded-2xl bg-secondary/40 px-4 py-3 text-left text-sm font-medium text-muted-foreground transition hover:bg-primary/20 hover:text-foreground"
           >
             <span className="truncate">{item.label}</span>

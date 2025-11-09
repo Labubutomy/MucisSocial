@@ -1,11 +1,15 @@
 import { useUnit } from 'effector-react'
 import { PlaylistGrid } from '@widgets/playlists'
-import { userPlaylists } from '@pages/user-playlists/model/data'
 import { routes } from '@shared/router'
+import { $myPlaylists, fetchMyPlaylistsFx } from '@pages/profile/model'
 
 export const UserPlaylistsPage = () => {
-  const navigateToCollection = useUnit(routes.collection.navigate)
-  const navigateToCreate = useUnit(routes.playlistCreate.navigate)
+  const { playlists, pending, navigateToCollection, navigateToCreate } = useUnit({
+    playlists: $myPlaylists,
+    pending: fetchMyPlaylistsFx.pending,
+    navigateToCollection: routes.collection.navigate,
+    navigateToCreate: routes.playlistCreate.navigate,
+  })
 
   return (
     <div className="page-container space-y-10 pb-20 pt-10">
@@ -17,17 +21,21 @@ export const UserPlaylistsPage = () => {
           каждый момент.
         </p>
       </header>
-      <PlaylistGrid
-        title="Ваши плейлисты"
-        playlists={userPlaylists}
-        onCreate={() => navigateToCreate({ params: {}, query: {} })}
-        onOpen={playlist =>
-          navigateToCollection({
-            params: { collectionId: playlist.id },
-            query: {},
-          })
-        }
-      />
+      {pending && playlists.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Загрузка плейлистов...</p>
+      ) : (
+        <PlaylistGrid
+          title="Ваши плейлисты"
+          playlists={playlists}
+          onCreate={() => navigateToCreate({ params: {}, query: {} })}
+          onOpen={playlist =>
+            navigateToCollection({
+              params: { collectionId: playlist.id },
+              query: {},
+            })
+          }
+        />
+      )}
     </div>
   )
 }

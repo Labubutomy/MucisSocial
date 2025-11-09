@@ -1,3 +1,4 @@
+import type { ChangeEvent } from 'react'
 import type { TrackDetail } from '@widgets/track/model/types'
 import { IconButton } from '@shared/ui/icon-button'
 import { cn } from '@shared/lib/cn'
@@ -11,6 +12,11 @@ export interface TrackHeroProps {
   onAddToPlaylist: (track: TrackDetail) => void
   onGoToArtist: (artistId: string) => void
   onGoToAlbum: (albumId: string) => void
+  currentTime: number
+  duration: number
+  isBuffering?: boolean
+  isSeekEnabled?: boolean
+  onSeek: (seconds: number) => void
 }
 
 const formatDuration = (seconds: number) => {
@@ -28,9 +34,26 @@ export const TrackHero = ({
   onAddToPlaylist,
   onGoToArtist,
   onGoToAlbum,
+  currentTime,
+  duration,
+  isBuffering = false,
+  isSeekEnabled = true,
+  onSeek,
 }: TrackHeroProps) => {
-  const progress = Math.min(Math.max(track.progress ?? 0, 0), 1)
-  const playedSeconds = Math.floor(track.duration * progress)
+  const effectiveDuration = Math.max(duration, track.duration ?? 0)
+  const safeDuration = effectiveDuration > 0 ? effectiveDuration : (track.duration ?? 0)
+  const safeTime = Math.min(Math.max(currentTime, 0), safeDuration)
+  const progress = safeDuration > 0 ? safeTime / safeDuration : 0
+  const playedSeconds = Math.floor(safeTime)
+  const sliderMax = Math.max(1, Math.round(safeDuration || track.duration || 1))
+
+  const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!isSeekEnabled) return
+    const next = Number(event.target.value)
+    if (Number.isFinite(next)) {
+      onSeek(next)
+    }
+  }
 
   return (
     <section className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr),minmax(0,1fr)]">
@@ -77,11 +100,25 @@ export const TrackHero = ({
               className={cn('absolute inset-y-0 left-0 rounded-full bg-primary transition-[width]')}
               style={{ width: `${progress * 100}%` }}
             />
+            <input
+              type="range"
+              min={0}
+              max={sliderMax}
+              step={1}
+              value={Math.floor(safeTime)}
+              onChange={handleSeek}
+              disabled={!isSeekEnabled}
+              aria-label="Позиция трека"
+              className="absolute inset-0 h-2 w-full cursor-pointer appearance-none bg-transparent"
+            />
           </div>
           <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <span>{formatDuration(playedSeconds)}</span>
-            <span>{formatDuration(track.duration)}</span>
+            <span>{formatDuration(Math.floor(safeDuration || track.duration))}</span>
           </div>
+          {isBuffering && (
+            <p className="text-xs text-muted-foreground/80">Буферизация потока через CDN…</p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-4">

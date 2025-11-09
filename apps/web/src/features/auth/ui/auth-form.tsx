@@ -12,7 +12,14 @@ export interface AuthFormProps {
   mode: 'signIn' | 'signUp'
 }
 
-export const AuthForm = ({ values, onChange, onSubmit, loading, submitLabel }: AuthFormProps) => {
+export const AuthForm = ({
+  values,
+  onChange,
+  onSubmit,
+  loading,
+  submitLabel,
+  mode,
+}: AuthFormProps) => {
   const updateField = (field: keyof AuthFormValues) => (value: string) =>
     onChange({ ...values, [field]: value })
 
@@ -27,6 +34,16 @@ export const AuthForm = ({ values, onChange, onSubmit, loading, submitLabel }: A
         onChange={event => updateField('email')(event.target.value)}
         required
       />
+      {mode === 'signUp' && (
+        <Input
+          label="Имя пользователя"
+          name="username"
+          placeholder="Введите имя пользователя"
+          value={values.username ?? ''}
+          onChange={event => updateField('username')(event.target.value)}
+          required
+        />
+      )}
       <Input
         label="Пароль"
         type="password"

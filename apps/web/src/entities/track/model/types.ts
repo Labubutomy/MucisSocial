@@ -3,6 +3,11 @@ export interface ArtistRef {
   name: string
 }
 
+export interface TrackStreamInfo {
+  masterUrl: string
+  qualities: string[]
+}
+
 export interface Track {
   id: string
   title: string
@@ -10,4 +15,5 @@ export interface Track {
   coverUrl: string
   duration: number
   liked?: boolean
+  stream?: TrackStreamInfo
 }

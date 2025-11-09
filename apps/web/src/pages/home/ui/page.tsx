@@ -1,14 +1,11 @@
-import { useMemo, useState } from 'react'
 import { useUnit } from 'effector-react'
 import { Tabs } from '@shared/ui/tabs'
 import type { TabItem } from '@shared/ui/tabs'
 import { TrackFeed } from '@widgets/home'
-import { homeFeed } from '@pages/home/model/data'
 import { $currentTrack, playbackToggled, trackQueued } from '@features/player'
 import type { Track } from '@entities/track'
 import { routes } from '@shared/router'
-
-type FeedTab = 'trending' | 'popular' | 'new'
+import { $activeTab, $tracks, tabChanged, trackLikedToggled, type FeedTab } from '@pages/home/model'
 
 const tabItems: TabItem[] = [
   { value: 'trending', label: 'В тренде' },
@@ -17,24 +14,25 @@ const tabItems: TabItem[] = [
 ]
 
 export const HomePage = () => {
-  const [activeTab, setActiveTab] = useState<FeedTab>('trending')
-  const [likes, setLikes] = useState<Record<string, boolean>>({})
-
-  const [currentTrack, enqueueTrack, togglePlayback, navigateToTrack] = useUnit([
-    $currentTrack,
-    trackQueued,
-    playbackToggled,
-    routes.track.navigate,
-  ])
-
-  const tracks = useMemo(
-    () =>
-      homeFeed[activeTab].map(track => ({
-        ...track,
-        liked: likes[track.id] ?? false,
-      })),
-    [activeTab, likes]
-  )
+  const {
+    tracks,
+    activeTab,
+    currentTrack,
+    enqueueTrack,
+    togglePlayback,
+    navigateToTrack,
+    toggleLike,
+    changeTab,
+  } = useUnit({
+    tracks: $tracks,
+    activeTab: $activeTab,
+    currentTrack: $currentTrack,
+    enqueueTrack: trackQueued,
+    togglePlayback: playbackToggled,
+    navigateToTrack: routes.track.navigate,
+    toggleLike: trackLikedToggled,
+    changeTab: tabChanged,
+  })
 
   const handlePlayToggle = (track: Track) => {
     if (!currentTrack || currentTrack.id !== track.id) {
@@ -45,7 +43,7 @@ export const HomePage = () => {
   }
 
   const handleLike = (track: Track) => {
-    setLikes(prev => ({ ...prev, [track.id]: !prev[track.id] }))
+    toggleLike(track.id)
   }
 
   const handleShare = (track: Track) => {
@@ -72,11 +70,7 @@ export const HomePage = () => {
             появились совсем недавно — всё в одном потоке.
           </p>
         </div>
-        <Tabs
-          value={activeTab}
-          onChange={value => setActiveTab(value as FeedTab)}
-          items={tabItems}
-        />
+        <Tabs value={activeTab} onChange={value => changeTab(value as FeedTab)} items={tabItems} />
       </header>
 
       <TrackFeed

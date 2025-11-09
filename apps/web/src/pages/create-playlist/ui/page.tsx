@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react'
 import { useUnit } from 'effector-react'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
@@ -6,6 +5,15 @@ import { Button } from '@shared/ui/button'
 import { Chip } from '@shared/ui/chip'
 import { cn } from '@shared/lib/cn'
 import { routes } from '@shared/router'
+import {
+  $form,
+  genreToggled,
+  privacyToggled,
+  titleChanged,
+  descriptionChanged,
+  formSubmitted,
+  createPlaylistFx,
+} from '@pages/create-playlist/model'
 
 const genreOptions = [
   'Синтвейв',
@@ -19,37 +27,34 @@ const genreOptions = [
 ]
 
 export const CreatePlaylistPage = () => {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [genres, setGenres] = useState<string[]>([])
-  const [isPrivate, setIsPrivate] = useState(false)
+  const {
+    form,
+    goBack,
+    toggleGenre,
+    togglePrivacy,
+    changeTitle,
+    changeDescription,
+    submitForm,
+    creating,
+  } = useUnit({
+    form: $form,
+    goBack: routes.profilePlaylists.navigate,
+    toggleGenre: genreToggled,
+    togglePrivacy: privacyToggled,
+    changeTitle: titleChanged,
+    changeDescription: descriptionChanged,
+    submitForm: formSubmitted,
+    creating: createPlaylistFx.pending,
+  })
 
-  const goBack = useUnit(routes.profilePlaylists.navigate)
-  const goToAddTracks = useUnit(routes.playlistAddTracks.navigate)
-
-  const suggestions = useMemo(
-    () =>
-      genreOptions.map(genre => ({
-        value: genre,
-        selected: genres.includes(genre),
-      })),
-    [genres]
-  )
-
-  const toggleGenre = (genre: string) => {
-    setGenres(prev =>
-      prev.includes(genre) ? prev.filter(item => item !== genre) : [...prev, genre]
-    )
-  }
+  const suggestions = genreOptions.map(genre => ({
+    value: genre,
+    selected: form.genres.includes(genre),
+  }))
 
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = event => {
     event.preventDefault()
-    const newPlaylistId = crypto.randomUUID()
-    console.info('Create playlist', { id: newPlaylistId, title, description, genres, isPrivate })
-    goToAddTracks({
-      params: { playlistId: newPlaylistId },
-      query: {},
-    })
+    submitForm()
   }
 
   return (
@@ -74,15 +79,15 @@ export const CreatePlaylistPage = () => {
             <Input
               label="Название плейлиста"
               placeholder="Например, Ночной драйв"
-              value={title}
-              onChange={event => setTitle(event.target.value)}
+              value={form.title}
+              onChange={event => changeTitle(event.target.value)}
               required
             />
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-muted-foreground">Описание</label>
               <textarea
-                value={description}
-                onChange={event => setDescription(event.target.value)}
+                value={form.description}
+                onChange={event => changeDescription(event.target.value)}
                 placeholder="Расскажите, для какого настроения этот плейлист"
                 className="min-h-[140px] rounded-xl border border-input bg-secondary/30 px-4 py-3 text-base text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
@@ -113,16 +118,16 @@ export const CreatePlaylistPage = () => {
             </div>
             <button
               type="button"
-              onClick={() => setIsPrivate(prev => !prev)}
+              onClick={() => togglePrivacy()}
               className={cn(
                 'relative inline-flex h-6 w-12 items-center rounded-full border transition sm:flex-shrink-0',
-                isPrivate ? 'border-primary bg-primary/40' : 'border-border/60 bg-secondary/30'
+                form.isPrivate ? 'border-primary bg-primary/40' : 'border-border/60 bg-secondary/30'
               )}
             >
               <span
                 className={cn(
                   'inline-block h-5 w-5 transform rounded-full transition',
-                  isPrivate
+                  form.isPrivate
                     ? 'translate-x-[26px] bg-primary text-primary-foreground'
                     : 'translate-x-[2px] bg-background'
                 )}
@@ -157,8 +162,8 @@ export const CreatePlaylistPage = () => {
             >
               Отменить
             </Button>
-            <Button type="submit" className="md:w-auto">
-              Сохранить
+            <Button type="submit" className="md:w-auto" disabled={creating}>
+              {creating ? 'Сохранение...' : 'Сохранить'}
             </Button>
           </div>
         </Card>

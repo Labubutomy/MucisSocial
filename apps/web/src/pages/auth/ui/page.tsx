@@ -1,12 +1,8 @@
-import { useState } from 'react'
-import { AuthForm, AuthTabs, type AuthFormValues, type AuthMode } from '@features/auth'
+import { AuthForm, AuthTabs } from '@features/auth'
 import { AuthCard } from '@widgets/auth'
-import { authFormSubmitted } from '@pages/auth/model'
-
-const initialValues: AuthFormValues = {
-  email: '',
-  password: '',
-}
+import { $mode, $values, modeChanged, submitClicked, valuesChanged } from '@pages/auth/model'
+import { $authError, $authPending } from '@features/auth/model'
+import { useUnit } from 'effector-react'
 
 const illustration = (
   <div className="flex flex-1 flex-col justify-between gap-6 rounded-3xl bg-gradient-to-br from-primary/60 via-accent/60 to-sidebar/60 p-8 text-primary-foreground shadow-2xl">
@@ -35,18 +31,20 @@ const illustration = (
 )
 
 export const AuthPage = () => {
-  const [mode, setMode] = useState<AuthMode>('signIn')
-  const [values, setValues] = useState<AuthFormValues>(initialValues)
+  const { mode, values, changeMode, changeValues, submit, pending, error } = useUnit({
+    mode: $mode,
+    values: $values,
+    changeMode: modeChanged,
+    changeValues: valuesChanged,
+    submit: submitClicked,
+    pending: $authPending,
+    error: $authError,
+  })
   const submitLabel = mode === 'signIn' ? 'Войти' : 'Создать аккаунт'
-
-  const handleModeChange = (nextMode: AuthMode) => {
-    setMode(nextMode)
-    setValues(initialValues)
-  }
 
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = event => {
     event.preventDefault()
-    authFormSubmitted({ mode, values })
+    submit()
   }
 
   return (
@@ -56,15 +54,23 @@ export const AuthPage = () => {
           title: 'Добро пожаловать в музыкальную соцсеть',
           subtitle: 'С возвращением',
         }}
-        tabs={<AuthTabs mode={mode} onModeChange={handleModeChange} />}
+        tabs={<AuthTabs mode={mode} onModeChange={changeMode} />}
         form={
-          <AuthForm
-            mode={mode}
-            values={values}
-            onChange={setValues}
-            onSubmit={handleSubmit}
-            submitLabel={submitLabel}
-          />
+          <div className="space-y-4">
+            <AuthForm
+              mode={mode}
+              values={values}
+              onChange={changeValues}
+              onSubmit={handleSubmit}
+              submitLabel={submitLabel}
+              loading={pending}
+            />
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
         }
         illustration={illustration}
       />

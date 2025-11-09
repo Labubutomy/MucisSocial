@@ -24,7 +24,8 @@ export const ProfileHeader = ({ user, className }: ProfileHeaderProps) => (
       <p className="text-sm uppercase tracking-[0.35em] text-primary">Профиль</p>
       <h1 className="text-3xl font-semibold md:text-4xl">{user.username}</h1>
       <p className="text-sm text-muted-foreground md:text-base">
-        {user.musicTasteSummary.topGenres.slice(0, 3).join(' • ')}
+        {(user.musicTasteSummary?.topGenres ?? []).slice(0, 3).join(' • ') ||
+          'Музыкальные предпочтения обновляются'}
       </p>
     </div>
   </section>

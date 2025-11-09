@@ -1470,6 +1470,11 @@ history@^5.3.0:
   dependencies:
     "@babel/runtime" "^7.7.6"
 
+hls.js@^1.5.12:
+  version "1.6.14"
+  resolved "https://registry.yarnpkg.com/hls.js/-/hls.js-1.6.14.tgz#acee6b3b7ea878d01adbd5af554199e2d3a12a0e"
+  integrity sha512-CSpT2aXsv71HST8C5ETeVo+6YybqCpHBiYrCRQSn3U5QUZuLTSsvtq/bj+zuvjLVADeKxoebzo16OkH8m1+65Q==
+
 ignore@^5.2.0:
   version "5.3.2"
   resolved "https://registry.yarnpkg.com/ignore/-/ignore-5.3.2.tgz#3cd40e729f3643fd87cb04e50bf0eb722bc596f5"

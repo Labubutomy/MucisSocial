@@ -17,11 +17,15 @@ export const TasteCloud = ({ user, onSelectGenre, onSelectArtist }: TasteCloudPr
           Любимые жанры
         </p>
         <div className="flex flex-wrap gap-2">
-          {user.musicTasteSummary.topGenres.map(genre => (
-            <Chip key={genre} onClick={() => onSelectGenre?.(genre)}>
-              {genre}
-            </Chip>
-          ))}
+          {(user.musicTasteSummary?.topGenres ?? []).length > 0 ? (
+            user.musicTasteSummary?.topGenres?.map(genre => (
+              <Chip key={genre} onClick={() => onSelectGenre?.(genre)}>
+                {genre}
+              </Chip>
+            ))
+          ) : (
+            <span className="text-sm text-muted-foreground/80">Жанры пока не выбраны</span>
+          )}
         </div>
       </div>
       <div>
@@ -29,11 +33,17 @@ export const TasteCloud = ({ user, onSelectGenre, onSelectArtist }: TasteCloudPr
           Любимые артисты
         </p>
         <div className="flex flex-wrap gap-2">
-          {user.musicTasteSummary.topArtists.map(artist => (
-            <Chip key={artist} onClick={() => onSelectArtist?.(artist)}>
-              {artist}
-            </Chip>
-          ))}
+          {(user.musicTasteSummary?.topArtists ?? []).length > 0 ? (
+            user.musicTasteSummary?.topArtists?.map(artist => (
+              <Chip key={artist} onClick={() => onSelectArtist?.(artist)}>
+                {artist}
+              </Chip>
+            ))
+          ) : (
+            <span className="text-sm text-muted-foreground/80">
+              Активность артистов появится позже
+            </span>
+          )}
         </div>
       </div>
     </div>
