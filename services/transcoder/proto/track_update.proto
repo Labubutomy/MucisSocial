@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package track_update;
 
-option go_package = "github.com/MucisSocial/transcoder/proto";
+option go_package = "github.com/MusicSocial/transcoder/proto";
 
 message UpdateTrackInfoRequest {
   string track_id = 1;
