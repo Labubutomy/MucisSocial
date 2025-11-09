@@ -1,4 +1,4 @@
-module github.com/MucisSocial/transcoder
+module github.com/MusicSocial/transcoder
 
 go 1.23.0
 
