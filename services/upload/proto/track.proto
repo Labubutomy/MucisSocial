@@ -5,9 +5,9 @@ package track;
 option go_package = "github.com/MucisSocial/upload/proto";
 
 message CreateTrackRequest {
-  repeated string artist_ids = 1;
-  string name = 2;
-  int64 duration = 3;
+  string name = 1;
+  repeated string artist_ids = 2;
+  int32 duration = 3;
   string genre = 4;
 }
 
@@ -15,16 +15,6 @@ message CreateTrackResponse {
   string track_id = 1;
 }
 
-message UpdateTrackLocationRequest {
-  string track_id = 1;
-  string storage_url = 2;
-}
-
-message UpdateTrackLocationResponse {
-  bool success = 1;
-}
-
 service TrackService {
   rpc CreateTrack (CreateTrackRequest) returns (CreateTrackResponse);
-  rpc UpdateTrackLocation (UpdateTrackLocationRequest) returns (UpdateTrackLocationResponse);
 }

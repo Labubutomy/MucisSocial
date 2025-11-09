@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"path/filepath"
 
 	"github.com/MucisSocial/upload/internal/audio"
 	"github.com/MucisSocial/upload/internal/config"
@@ -83,24 +82,22 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 
 	log.Printf("Received track data: %d bytes", buffer.Len())
 
-	duration, err := audio.GetDuration(buffer.Bytes())
-	if err != nil {
-		log.Printf("Warning: failed to get track duration: %v", err)
-		duration = 0 // unknown duration
-	}
-
-	log.Printf("Track duration: %d seconds", duration)
-
 	ctx := stream.Context()
-	trackID, err := s.trackClient.CreateTrack(ctx, trackName, artistIDs, genre, duration)
+	trackID, err := s.trackClient.CreateTrack(ctx, trackName, artistIDs, genre, 0)
 	if err != nil {
 		return fmt.Errorf("failed to create track in track service: %w", err)
 	}
 
 	log.Printf("Track created in Track Service: track_id=%s", trackID)
 
+	// Detect file extension from content
+	extension, err := audio.DetectExtension(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to detect audio format: %w", err)
+	}
+	log.Printf("Detected audio format: %s", extension)
+
 	reader := bytes.NewReader(buffer.Bytes())
-	extension := filepath.Ext(trackName)
 	objectName, err := s.storage.UploadTrack(ctx, reader, primaryArtist, trackID, extension)
 	if err != nil {
 		return fmt.Errorf("failed to upload to storage: %w", err)
@@ -111,9 +108,9 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 	log.Printf("Track uploaded to MinIO: %s", trackURL)
 
 	transcoderTask := messaging.TranscoderTask{
-		TrackID:   trackID,
-		ArtistIDs: artistIDs,
-		TrackURL:  trackURL,
+		TrackID:  trackID,
+		ArtistID: primaryArtist,
+		TrackURL: trackURL,
 	}
 
 	if err := s.producer.SendTranscoderTask(ctx, transcoderTask); err != nil {

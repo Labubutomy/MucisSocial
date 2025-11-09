@@ -11,8 +11,7 @@ import (
 )
 
 type Client interface {
-	CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int64) (string, error)
-	UpdateTrackLocation(ctx context.Context, trackID, storageURL string) error
+	CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int32) (string, error)
 	Close() error
 }
 
@@ -33,7 +32,7 @@ func NewTrackClient(cfg *config.TrackServiceConfig) (*GRPCClient, error) {
 	}, nil
 }
 
-func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int64) (string, error) {
+func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int32) (string, error) {
 	resp, err := c.client.CreateTrack(ctx, &proto.CreateTrackRequest{
 		Name:      name,
 		ArtistIds: artistIDs,
@@ -50,25 +49,6 @@ func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []s
 	}
 
 	return trackID, nil
-}
-
-func (c *GRPCClient) UpdateTrackLocation(ctx context.Context, trackID, storageURL string) error {
-	if trackID == "" {
-		return fmt.Errorf("trackID is required")
-	}
-	if storageURL == "" {
-		return fmt.Errorf("storageURL is required")
-	}
-
-	_, err := c.client.UpdateTrackLocation(ctx, &proto.UpdateTrackLocationRequest{
-		TrackId:    trackID,
-		StorageUrl: storageURL,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update track location in track service: %w", err)
-	}
-
-	return nil
 }
 
 func (c *GRPCClient) Close() error {
