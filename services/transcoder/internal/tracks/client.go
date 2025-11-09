@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MucisSocial/transcoder/internal/config"
-	"github.com/MucisSocial/transcoder/proto"
+	"github.com/MusicSocial/transcoder/internal/config"
+	"github.com/MusicSocial/transcoder/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
