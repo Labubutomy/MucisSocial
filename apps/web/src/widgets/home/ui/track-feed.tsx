@@ -7,9 +7,10 @@ export interface TrackFeedProps {
   subtitle?: string
   tracks: Track[]
   activeTrackId?: string
+  isPlaying?: boolean
   onPlayToggle: (track: Track) => void
   onLike: (track: Track) => void
-  onShare: (track: Track) => void
+  onShare?: (track: Track) => void
   onOpen: (track: Track) => void
 }
 
@@ -18,6 +19,7 @@ export const TrackFeed = ({
   subtitle,
   tracks,
   activeTrackId,
+  isPlaying = false,
   onPlayToggle,
   onLike,
   onShare,
@@ -30,10 +32,10 @@ export const TrackFeed = ({
         <TrackCard
           key={track.id}
           track={track}
-          isPlaying={track.id === activeTrackId}
+          isPlaying={track.id === activeTrackId && isPlaying}
           onPlayToggle={onPlayToggle}
           onLike={onLike}
-          onShare={onShare}
+          onShare={onShare ?? (() => {})}
           onOpen={onOpen}
         />
       ))}

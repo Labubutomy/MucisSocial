@@ -2,7 +2,7 @@ import { useUnit } from 'effector-react'
 import { Tabs } from '@shared/ui/tabs'
 import type { TabItem } from '@shared/ui/tabs'
 import { TrackFeed } from '@widgets/home'
-import { $currentTrack, playbackToggled, trackQueued } from '@features/player'
+import { $currentTrack, $isPlaying, playbackToggled, trackQueued } from '@features/player'
 import type { Track } from '@entities/track'
 import { routes } from '@shared/router'
 import { $activeTab, $tracks, tabChanged, trackLikedToggled, type FeedTab } from '@pages/home/model'
@@ -18,6 +18,7 @@ export const HomePage = () => {
     tracks,
     activeTab,
     currentTrack,
+    isPlaying,
     enqueueTrack,
     togglePlayback,
     navigateToTrack,
@@ -27,6 +28,7 @@ export const HomePage = () => {
     tracks: $tracks,
     activeTab: $activeTab,
     currentTrack: $currentTrack,
+    isPlaying: $isPlaying,
     enqueueTrack: trackQueued,
     togglePlayback: playbackToggled,
     navigateToTrack: routes.track.navigate,
@@ -78,6 +80,7 @@ export const HomePage = () => {
         subtitle="Свежие композиции под ваше настроение"
         tracks={tracks}
         activeTrackId={currentTrack?.id}
+        isPlaying={isPlaying && Boolean(currentTrack)}
         onPlayToggle={handlePlayToggle}
         onLike={handleLike}
         onShare={handleShare}

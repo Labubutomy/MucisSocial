@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 
@@ -21,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create router with /api/v1 prefix
+router = APIRouter(prefix="/api/v1")
 
 
 def track_to_response(track, include_album: bool = True) -> Dict[str, Any]:
@@ -69,13 +72,13 @@ def playlist_to_response(playlist) -> Dict[str, Any]:
 # -------------------------- Tracks service -------------------------- #
 
 
-@app.get("/tracks")
+@router.get("/tracks")
 def list_tracks(filter: Optional[str] = Query(default=None), limit: int = Query(default=24, ge=1, le=100)) -> Dict[str, Any]:
     items = [track_to_response(track) for track in store.list_tracks(filter, limit)]
     return {"filter": filter or "all", "items": items}
 
 
-@app.get("/tracks/{track_id}")
+@router.get("/tracks/{track_id}")
 def get_track(track_id: str) -> Dict[str, Any]:
     track = store.get_track(track_id)
     if not track:
@@ -90,13 +93,13 @@ def get_track(track_id: str) -> Dict[str, Any]:
     return payload
 
 
-@app.get("/tracks/{track_id}/recommendations")
+@router.get("/tracks/{track_id}/recommendations")
 def get_recommendations(track_id: str, limit: int = Query(default=12, ge=1, le=50)) -> Dict[str, Any]:
     items = [track_to_response(track, include_album=False) for track in store.add_recommendations(track_id, limit)]
     return {"trackId": track_id, "items": items}
 
 
-@app.get("/tracks/search")
+@router.get("/tracks/search")
 def search_tracks(q: str = Query(...), limit: int = Query(default=20, ge=1, le=100)) -> Dict[str, Any]:
     results = []
     for track in store.search_tracks(q, limit):
@@ -123,7 +126,7 @@ class LikePayload(BaseModel):
     isLiked: Optional[bool] = Field(default=True)
 
 
-@app.post("/tracks/{track_id}/like")
+@router.post("/tracks/{track_id}/like")
 def like_track(track_id: str, payload: LikePayload = Body(default_factory=LikePayload)) -> Dict[str, Any]:
     track = store.set_track_like(track_id, payload.isLiked if payload.isLiked is not None else True)
     if not track:
@@ -131,12 +134,13 @@ def like_track(track_id: str, payload: LikePayload = Body(default_factory=LikePa
     return {"trackId": track_id, "isLiked": track.is_liked, "likedAt": track.liked_at}
 
 
-@app.get("/tracks/search/trending")
+@router.get("/tracks/search/trending")
 def trending_search_queries() -> Dict[str, Any]:
     return {"items": [{"query": q} for q in store.trending_queries]}
 
 
 # -------------------------- CDN service -------------------------- #
+# CDN endpoints don't use /api/v1 prefix
 
 
 @app.get("/hls/{track_id}/master.m3u8")
@@ -197,7 +201,7 @@ def _auth_response(user) -> Dict[str, Any]:
     }
 
 
-@app.post("/auth/sign-in")
+@router.post("/auth/sign-in")
 def sign_in(payload: SignInPayload) -> Dict[str, Any]:
     user = store.authenticate(payload.email, payload.password)
     if not user:
@@ -205,7 +209,7 @@ def sign_in(payload: SignInPayload) -> Dict[str, Any]:
     return _auth_response(user)
 
 
-@app.post("/auth/sign-up")
+@router.post("/auth/sign-up")
 def sign_up(payload: SignUpPayload) -> Dict[str, Any]:
     try:
         user = store.create_user(payload.email, payload.password, payload.username)
@@ -214,7 +218,7 @@ def sign_up(payload: SignUpPayload) -> Dict[str, Any]:
     return _auth_response(user)
 
 
-@app.get("/me")
+@router.get("/me")
 def get_me() -> Dict[str, Any]:
     user = store.get_user("user-ava")
     if not user:
@@ -230,7 +234,7 @@ def get_me() -> Dict[str, Any]:
     }
 
 
-@app.get("/me/playlists")
+@router.get("/me/playlists")
 def get_my_playlists(limit: int = Query(default=50, ge=1, le=100)) -> Dict[str, Any]:
     user = store.get_user("user-ava")
     if not user:
@@ -239,7 +243,7 @@ def get_my_playlists(limit: int = Query(default=50, ge=1, le=100)) -> Dict[str, 
     return {"items": items}
 
 
-@app.get("/me/search-history")
+@router.get("/me/search-history")
 def get_search_history() -> Dict[str, Any]:
     user = store.get_user("user-ava")
     if not user:
@@ -251,7 +255,7 @@ class SearchHistoryPayload(BaseModel):
     query: str
 
 
-@app.post("/me/search-history")
+@router.post("/me/search-history")
 def add_search_history(payload: SearchHistoryPayload) -> Dict[str, Any]:
     entry = store.add_search_history("user-ava", payload.query)
     return entry
@@ -260,7 +264,7 @@ def add_search_history(payload: SearchHistoryPayload) -> Dict[str, Any]:
 # -------------------------- Artists service -------------------------- #
 
 
-@app.get("/artists/{artist_id}")
+@router.get("/artists/{artist_id}")
 def get_artist(artist_id: str) -> Dict[str, Any]:
     artist = store.get_artist(artist_id)
     if not artist:
@@ -279,7 +283,7 @@ def get_artist(artist_id: str) -> Dict[str, Any]:
     }
 
 
-@app.get("/artists/trending")
+@router.get("/artists/trending")
 def trending_artists() -> Dict[str, Any]:
     items = [
         {
@@ -293,7 +297,7 @@ def trending_artists() -> Dict[str, Any]:
     return {"items": items}
 
 
-@app.get("/artists/search")
+@router.get("/artists/search")
 def search_artists(q: str = Query(...)) -> Dict[str, Any]:
     matches = [
         {
@@ -322,7 +326,7 @@ class AddTracksPayload(BaseModel):
     trackIds: List[str]
 
 
-@app.get("/playlists/{playlist_id}")
+@router.get("/playlists/{playlist_id}")
 def get_playlist(playlist_id: str) -> Dict[str, Any]:
     playlist = store.playlists.get(playlist_id)
     if not playlist:
@@ -330,26 +334,26 @@ def get_playlist(playlist_id: str) -> Dict[str, Any]:
     return playlist_to_response(playlist)
 
 
-@app.get("/playlists/{playlist_id}/tracks")
+@router.get("/playlists/{playlist_id}/tracks")
 def get_playlist_tracks(playlist_id: str) -> Dict[str, Any]:
     tracks = [track_to_response(track, include_album=False) for track in store.get_playlist_tracks(playlist_id)]
     return {"items": tracks}
 
 
-@app.post("/playlists")
+@router.post("/playlists")
 def create_playlist(payload: CreatePlaylistPayload) -> Dict[str, Any]:
     playlist = store.create_playlist("user-ava", payload.model_dump())
     response = playlist_to_response(playlist)
     return response
 
 
-@app.post("/playlists/{playlist_id}/tracks")
+@router.post("/playlists/{playlist_id}/tracks")
 def add_tracks_to_playlist(playlist_id: str, payload: AddTracksPayload) -> Dict[str, Any]:
     result = store.add_tracks_to_playlist(playlist_id, payload.trackIds)
     return result
 
 
-@app.get("/playlists")
+@router.get("/playlists")
 def list_playlists(filter: Optional[str] = Query(default=None), limit: int = Query(default=24, ge=1, le=100)) -> Dict[str, Any]:
     items = []
     for playlist in store.playlists.values():
@@ -365,7 +369,23 @@ def list_playlists(filter: Optional[str] = Query(default=None), limit: int = Que
     return {"filter": filter or "all", "items": items[:limit]}
 
 
-@app.get("/users/{user_id}/playlists")
+@router.get("/playlists/search")
+def search_playlists(q: str = Query(...), limit: int = Query(default=20, ge=1, le=100)) -> Dict[str, Any]:
+    items = []
+    for playlist in store.search_playlists(q, limit):
+        items.append(
+            {
+                "id": playlist.id,
+                "title": playlist.title,
+                "coverUrl": playlist.cover_url,
+                "itemsCount": len(playlist.tracks),
+                "description": playlist.description,
+            }
+        )
+    return {"query": q, "items": items}
+
+
+@router.get("/users/{user_id}/playlists")
 def list_user_playlists(user_id: str) -> Dict[str, Any]:
     user = store.get_user(user_id)
     if not user:
@@ -390,4 +410,8 @@ def list_user_playlists(user_id: str) -> Dict[str, Any]:
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {"status": "healthy", "service": "Mock API Service", "version": "0.1.0"}
+
+
+# Include router with /api/v1 prefix
+app.include_router(router)
 

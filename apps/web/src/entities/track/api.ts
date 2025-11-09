@@ -1,7 +1,8 @@
 import { createApiClient } from '@shared/api/client'
+import { API_CONFIG } from '@shared/config/api'
 import type { Track } from './model/types'
 
-const client = createApiClient('http://localhost:8100')
+const client = createApiClient(API_CONFIG.mockApi)
 
 interface StreamResponsePayload {
   quality?: string[]
@@ -67,14 +68,14 @@ const mapTrack = (track: TrackResponse): Track => ({
 })
 
 export const fetchTracks = async (params: { filter?: string; limit?: number }) => {
-  const response = await client.get<TracksResponse>('/tracks', {
+  const response = await client.get<TracksResponse>('/api/v1/tracks', {
     params,
   })
   return response.data.items.map(mapTrack)
 }
 
 export const fetchTrackDetail = async (trackId: string) => {
-  const response = await client.get<TrackDetailResponse>(`/tracks/${trackId}`)
+  const response = await client.get<TrackDetailResponse>(`/api/v1/tracks/${trackId}`)
   const track = response.data
   const album = track.album ?? {
     id: `album-${track.id}`,
@@ -100,7 +101,7 @@ export const fetchTrackDetail = async (trackId: string) => {
 
 export const fetchTrackRecommendations = async (trackId: string) => {
   const response = await client.get<{ trackId: string; items: TrackResponse[] }>(
-    `/tracks/${trackId}/recommendations`,
+    `/api/v1/tracks/${trackId}/recommendations`,
     {
       params: { limit: 12 },
     }
@@ -110,18 +111,21 @@ export const fetchTrackRecommendations = async (trackId: string) => {
 }
 
 export const toggleTrackLike = async (trackId: string, isLiked: boolean) => {
-  const response = await client.post<ToggleLikeResponse>(`/tracks/${trackId}/like`, {
+  const response = await client.post<ToggleLikeResponse>(`/api/v1/tracks/${trackId}/like`, {
     isLiked,
   })
   return response.data
 }
 
 export const searchTracks = async (query: string, limit = 20) => {
-  const response = await client.get<{ query: string; items: TrackResponse[] }>('/tracks/search', {
-    params: {
-      q: query,
-      limit,
-    },
-  })
+  const response = await client.get<{ query: string; items: TrackResponse[] }>(
+    '/api/v1/tracks/search',
+    {
+      params: {
+        q: query,
+        limit,
+      },
+    }
+  )
   return response.data.items.map(mapTrack)
 }

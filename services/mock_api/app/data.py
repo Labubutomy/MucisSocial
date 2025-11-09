@@ -233,6 +233,16 @@ class InMemoryStore:
     def get_artist(self, artist_id: str) -> Optional[Artist]:
         return self.artists.get(artist_id)
 
+    # Playlists
+    def search_playlists(self, query: str, limit: int) -> List[Playlist]:
+        query_lower = query.lower()
+        matches = [
+            playlist for playlist in self.playlists.values()
+            if query_lower in playlist.title.lower()
+            or (playlist.description and query_lower in playlist.description.lower())
+        ]
+        return matches[:limit]
+
     def get_playlist_tracks(self, playlist_id: str) -> List[Track]:
         playlist = self.playlists.get(playlist_id)
         if not playlist:

@@ -19,7 +19,7 @@ export const Avatar = ({ src, alt, size = 'md', fallback, className, ...props }:
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-full bg-muted/40',
+        'relative flex-shrink-0 aspect-square overflow-hidden rounded-full bg-muted/40',
         sizeStyles[size],
         className
       )}

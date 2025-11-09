@@ -625,9 +625,15 @@ func (g *Gateway) searchArtistsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure items is always an array, not nil
+	items := resp.Artists
+	if items == nil {
+		items = []*artistpb.ArtistResponse{}
+	}
+
 	result := map[string]interface{}{
 		"query": query,
-		"items": resp.Artists,
+		"items": items,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

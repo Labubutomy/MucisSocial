@@ -1,3 +1,37 @@
+# Music Social Web Client
+
+React + TypeScript + Vite приложение для музыкальной социальной сети.
+
+## Настройка окружения
+
+Скопируйте `.env.example` в `.env` и настройте переменные окружения:
+
+```bash
+cp .env.example .env
+```
+
+### Переменные окружения
+
+- `VITE_API_GATEWAY_URL` - URL API Gateway (по умолчанию: `http://localhost:8080`)
+- `VITE_MOCK_API_URL` - URL Mock API для эндпоинтов, которых нет в gateway (по умолчанию: `http://localhost:8100`)
+- `VITE_CDN_URL` - URL CDN для стриминга музыки (по умолчанию: `http://localhost:8000`)
+
+Все переменные опциональны и имеют значения по умолчанию для локальной разработки.
+
+## Запуск
+
+```bash
+yarn dev
+```
+
+## Сборка
+
+```bash
+yarn build
+```
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

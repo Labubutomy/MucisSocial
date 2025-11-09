@@ -1,8 +1,9 @@
 import { createApiClient } from '@shared/api/client'
+import { API_CONFIG } from '@shared/config/api'
 import type { PlaylistDetail, PlaylistSummary } from './model/types'
 import type { Track } from '@entities/track'
 
-const client = createApiClient('http://localhost:8100')
+const client = createApiClient(API_CONFIG.mockApi)
 
 interface PlaylistResponse extends PlaylistSummary {
   description: string
@@ -63,7 +64,7 @@ const mapTrack = (track: PlaylistTracksResponse['items'][number]): Track => ({
 })
 
 export const fetchPlaylistDetail = async (playlistId: string) => {
-  const response = await client.get<PlaylistResponse>(`/playlists/${playlistId}`)
+  const response = await client.get<PlaylistResponse>(`/api/v1/playlists/${playlistId}`)
   const data = response.data
   return {
     id: data.id,
@@ -79,7 +80,9 @@ export const fetchPlaylistDetail = async (playlistId: string) => {
 }
 
 export const fetchPlaylistTracks = async (playlistId: string) => {
-  const response = await client.get<PlaylistTracksResponse>(`/playlists/${playlistId}/tracks`)
+  const response = await client.get<PlaylistTracksResponse>(
+    `/api/v1/playlists/${playlistId}/tracks`
+  )
   return response.data.items.map(mapTrack)
 }
 
@@ -89,18 +92,18 @@ export const createPlaylist = async (payload: {
   isPrivate?: boolean
   genres?: string[]
 }) => {
-  const response = await client.post<PlaylistResponse>('/playlists', payload)
+  const response = await client.post<PlaylistResponse>('/api/v1/playlists', payload)
   return fetchPlaylistDetail(response.data.id)
 }
 
 export const addTracksToPlaylist = async (playlistId: string, trackIds: string[]) => {
-  const response = await client.post<AddTracksResponse>(`/playlists/${playlistId}/tracks`, {
+  const response = await client.post<AddTracksResponse>(`/api/v1/playlists/${playlistId}/tracks`, {
     trackIds,
   })
   return response.data
 }
 
 export const fetchPlaylists = async (params: { filter?: string; limit?: number }) => {
-  const response = await client.get<PlaylistsResponse>('/playlists', { params })
+  const response = await client.get<PlaylistsResponse>('/api/v1/playlists', { params })
   return response.data.items
 }
