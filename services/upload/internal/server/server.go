@@ -34,8 +34,9 @@ func NewUploadServer(cfg *config.Config, storage *storage.MinIOStorage, producer
 
 func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) error {
 	var (
-		artistID  string
+		artistIDs []string
 		trackName string
+		genre     string
 		buffer    bytes.Buffer
 	)
 
@@ -49,10 +50,17 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 		return fmt.Errorf("first message must contain metadata")
 	}
 
-	artistID = metadata.ArtistId
+	artistIDs = metadata.ArtistIds
 	trackName = metadata.TrackName
+	genre = metadata.Genre
 
-	log.Printf("Starting track upload: artist_id=%s, track_name=%s", artistID, trackName)
+	if len(artistIDs) == 0 {
+		return fmt.Errorf("metadata must include at least one artist_id")
+	}
+
+	primaryArtist := artistIDs[0]
+
+	log.Printf("Starting track upload: artist_ids=%v, track_name=%s, genre=%s", artistIDs, trackName, genre)
 
 	for {
 		msg, err := stream.Recv()
@@ -84,7 +92,7 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 	log.Printf("Track duration: %d seconds", duration)
 
 	ctx := stream.Context()
-	trackID, err := s.trackClient.CreateTrack(ctx, artistID, trackName, duration)
+	trackID, err := s.trackClient.CreateTrack(ctx, trackName, artistIDs, genre, duration)
 	if err != nil {
 		return fmt.Errorf("failed to create track in track service: %w", err)
 	}
@@ -93,7 +101,7 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 
 	reader := bytes.NewReader(buffer.Bytes())
 	extension := filepath.Ext(trackName)
-	objectName, err := s.storage.UploadTrack(ctx, reader, artistID, trackID, extension)
+	objectName, err := s.storage.UploadTrack(ctx, reader, primaryArtist, trackID, extension)
 	if err != nil {
 		return fmt.Errorf("failed to upload to storage: %w", err)
 	}
@@ -102,15 +110,10 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 
 	log.Printf("Track uploaded to MinIO: %s", trackURL)
 
-	if err := s.trackClient.UpdateTrackLocation(ctx, trackID, trackURL); err != nil {
-		return fmt.Errorf("failed to update track location in track service: %w", err)
-	}
-	log.Printf("Track location updated in Track Service: %s", trackURL)
-
 	transcoderTask := messaging.TranscoderTask{
-		TrackID:  trackID,
-		ArtistID: artistID,
-		TrackURL: trackURL,
+		TrackID:   trackID,
+		ArtistIDs: artistIDs,
+		TrackURL:  trackURL,
 	}
 
 	if err := s.producer.SendTranscoderTask(ctx, transcoderTask); err != nil {

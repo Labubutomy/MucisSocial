@@ -16,8 +16,9 @@ message UploadTrackRequest {
 }
 
 message TrackMetadata {
-  string artist_id = 1;
+  repeated string artist_ids = 1;
   string track_name = 2;
+  string genre = 3;
 }
 
 message UploadTrackResponse {

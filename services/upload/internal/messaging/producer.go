@@ -14,9 +14,9 @@ type Producer struct {
 }
 
 type TranscoderTask struct {
-	TrackID  string `json:"track_id"`
-	ArtistID string `json:"artist_id"`
-	TrackURL string `json:"track_url"`
+	TrackID   string   `json:"track_id"`
+	ArtistIDs []string `json:"artist_ids"`
+	TrackURL  string   `json:"track_url"`
 }
 
 func NewProducer(cfg *config.RedpandaConfig) (*Producer, error) {

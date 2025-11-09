@@ -11,7 +11,7 @@ import (
 )
 
 type Client interface {
-	CreateTrack(ctx context.Context, artistID, name string, duration int64) (string, error)
+	CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int64) (string, error)
 	UpdateTrackLocation(ctx context.Context, trackID, storageURL string) error
 	Close() error
 }
@@ -33,11 +33,12 @@ func NewTrackClient(cfg *config.TrackServiceConfig) (*GRPCClient, error) {
 	}, nil
 }
 
-func (c *GRPCClient) CreateTrack(ctx context.Context, artistID, name string, duration int64) (string, error) {
+func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int64) (string, error) {
 	resp, err := c.client.CreateTrack(ctx, &proto.CreateTrackRequest{
-		ArtistId: artistID,
-		Name:     name,
-		Duration: duration,
+		Name:      name,
+		ArtistIds: artistIDs,
+		Duration:  duration,
+		Genre:     genre,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create track in track service: %w", err)
