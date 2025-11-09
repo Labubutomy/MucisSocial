@@ -6,12 +6,12 @@ import (
 	"io"
 	"log"
 
-	"github.com/MucisSocial/upload/internal/audio"
-	"github.com/MucisSocial/upload/internal/config"
-	"github.com/MucisSocial/upload/internal/messaging"
-	"github.com/MucisSocial/upload/internal/storage"
-	"github.com/MucisSocial/upload/internal/tracks"
-	pb "github.com/MucisSocial/upload/proto"
+	"github.com/MusicSocial/upload/internal/audio"
+	"github.com/MusicSocial/upload/internal/config"
+	"github.com/MusicSocial/upload/internal/messaging"
+	"github.com/MusicSocial/upload/internal/storage"
+	"github.com/MusicSocial/upload/internal/tracks"
+	pb "github.com/MusicSocial/upload/proto"
 )
 
 type UploadServer struct {
