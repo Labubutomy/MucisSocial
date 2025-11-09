@@ -1,6 +1,59 @@
-version: '3.8'
-
 services:
+  streaming:
+    build:
+      context: ./streaming
+    environment:
+      SIGNING_SECRET: super-secret
+      BASE_URL: http://localhost:8000
+      CDN_BASE_URL: http://localhost:8001
+      PLAYLIST_TTL_SECONDS: 300
+      SEGMENT_TTL_SECONDS: 60
+      AVAILABLE_BITRATES: "[256000, 160000, 96000]"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: tracks
+      MINIO_SECURE: "false"
+      MINIO_REGION: ""
+
+    networks:
+      - music-network
+    restart: unless-stopped
+
+  cdn:
+    build:
+      context: ./CDN
+    environment:
+      CDN_ORIGIN_BASE_URL: http://streaming:8000
+      CDN_ORIGIN_API_BASE_URL: http://streaming:8000
+      CDN_CACHE_PLAYLIST_TTL: 60
+      CDN_CACHE_SEGMENT_TTL: 3600
+      CDN_CACHE_STATIC_TTL: 86400
+      CDN_CACHE_MAX_SIZE: 1000
+      CDN_LOG_LEVEL: INFO
+      CDN_LOG_REQUESTS: "true"
+      CDN_LOG_CACHE_STATS: "true"
+    networks:
+      - music-network
+    depends_on:
+      - streaming
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  mock-api:
+    build:
+      context: ./mock_api
+    ports:
+      - "8100:8000"
+    networks:
+      - music-network
+    restart: unless-stopped
+
   # PostgreSQL Database for Users Service
   postgres:
     image: postgres:15-alpine

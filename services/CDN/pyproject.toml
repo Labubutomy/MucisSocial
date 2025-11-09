@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "cdn"
+version = "0.1.0"
+description = "CDN service for caching HLS/fMP4 segments and playlists"
+authors = ["<iizhukv@icloud.com>"]
+readme = "README.md"
+packages = [
+    { include = "api" },
+    { include = "core" },
+    { include = "services" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.30.0" }
+pydantic-settings = "^2.3.0"
+httpx = "^0.27.0"
+anyio = "^4.4.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.23.7"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+

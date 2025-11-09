@@ -1,0 +1,14 @@
+services:
+  web-client:
+    build:
+      context: ./web
+    networks:  
+      - music-network
+    restart: unless-stopped
+
+  player:
+    build:
+      context: ./player
+    networks:
+      - music-network
+    restart: unless-stopped

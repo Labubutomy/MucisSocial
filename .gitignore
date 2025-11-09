@@ -1,5 +1,7 @@
 .DS_Store
 
+local/
+
 # Proto compiled files
 *.pb.go
 *_grpc.pb.go

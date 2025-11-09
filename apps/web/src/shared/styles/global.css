@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root {
+    /* DevMatch AI Dark Theme - Default */
+    --background: 240 10% 8%; /* глубокий темно-синий фон */
+    --foreground: 0 0% 98%; /* чистый белый текст */
+
+    --secondary: 240 8% 15%; /* темные вторичные элементы */
+    --secondary-foreground: 0 0% 98%;
+
+    --card: 240 10% 10%; /* чуть светлее карточки */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    --sidebar: 258 30% 20%; /* темно-фиолетовый сайдбар */
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-active: 258 84% 70%; /* яркий акцент в сайдбаре */
+
+    --primary: 258 84% 70%; /* насыщенный сиреневый */
+    --primary-foreground: 0 0% 100%;
+
+    --muted: 240 8% 20%; /* приглушенные элементы */
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 99 50% 55%; /* более темный салатовый для контраста */
+    --accent-foreground: 0 0% 100%;
+
+    --chart-yellow: 48 95% 55%; /* приглушенный желтый */
+    --chart-pink: 330 70% 60%; /* темно-розовый */
+    --chart-purple: 258 84% 70%; /* в тон primary */
+    --chart-green: 155 55% 50%; /* приглушенный зеленый */
+
+    --destructive: 0 72% 50%; /* темно-красный */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 8% 25%; /* темные границы */
+    --input: 240 8% 20%;
+    --ring: 258 84% 70%; /* сиреневое свечение */
+
+    --radius: 0.5rem;
+
+    /* DevMatch AI Specific Colors */
+    --status-ai: 48 95% 55%; /* желтый для AI */
+    --status-progress: 258 84% 70%; /* сиреневый для в работе */
+    --status-review: 330 70% 60%; /* розовый для проверки */
+    --status-completed: 155 55% 50%; /* зеленый для завершено */
+    --status-cancelled: 0 72% 50%; /* красный для отменено */
+
+    --skill-beginner: 155 55% 50%; /* зеленый для начинающих */
+    --skill-intermediate: 48 95% 55%; /* желтый для средних */
+    --skill-advanced: 330 70% 60%; /* розовый для продвинутых */
+    --skill-expert: 258 84% 70%; /* сиреневый для экспертов */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Montserrat', sans-serif;
+  }
+  a:hover {
+    text-decoration: underline;
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .page-container {
+    @apply px-4 md:px-8 w-full max-w-screen-xl mx-auto;
+  }
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('@shared/assets/fonts/Montserrat-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('@shared/assets/fonts/Montserrat-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+}
