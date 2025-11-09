@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package users.v1;
+
+option go_package = "github.com/MucisSocial/user-service/proto/users/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// User Service gRPC API
+service UserService {
+  // Authentication endpoints
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+  rpc SignUp(SignUpRequest) returns (SignUpResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  
+  // User management endpoints
+  rpc GetMe(GetMeRequest) returns (GetMeResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc GetUserById(GetUserByIdRequest) returns (GetUserByIdResponse);
+  
+  // Search history endpoints
+  rpc GetSearchHistory(GetSearchHistoryRequest) returns (GetSearchHistoryResponse);
+  rpc AddSearchHistory(AddSearchHistoryRequest) returns (AddSearchHistoryResponse);
+  rpc ClearSearchHistory(ClearSearchHistoryRequest) returns (ClearSearchHistoryResponse);
+}
+
+// Auth Messages
+message SignInRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message SignInResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  User user = 3;
+}
+
+message SignUpRequest {
+  string email = 1;
+  string password = 2;
+  string username = 3;
+}
+
+message SignUpResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  User user = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// User Messages
+message GetMeRequest {
+  string user_id = 1; // from JWT token
+}
+
+message GetMeResponse {
+  User user = 1;
+}
+
+message UpdateProfileRequest {
+  string user_id = 1;
+  optional string username = 2;
+  optional string avatar_url = 3;
+}
+
+message UpdateProfileResponse {
+  User user = 1;
+}
+
+message GetUserByIdRequest {
+  string user_id = 1;
+}
+
+message GetUserByIdResponse {
+  PublicUser user = 1;
+}
+
+// Search History Messages
+message GetSearchHistoryRequest {
+  string user_id = 1;
+  int32 limit = 2;
+}
+
+message GetSearchHistoryResponse {
+  repeated SearchHistoryItem items = 1;
+}
+
+message AddSearchHistoryRequest {
+  string user_id = 1;
+  string query = 2;
+}
+
+message AddSearchHistoryResponse {
+  SearchHistoryItem item = 1;
+}
+
+message ClearSearchHistoryRequest {
+  string user_id = 1;
+}
+
+message ClearSearchHistoryResponse {
+  bool success = 1;
+}
+
+// Domain Models
+message User {
+  string id = 1;
+  string username = 2;
+  string email = 3;
+  string avatar_url = 4;
+  MusicTasteSummary music_taste_summary = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message PublicUser {
+  string id = 1;
+  string username = 2;
+  string avatar_url = 3;
+  MusicTasteSummary music_taste_summary = 4;
+}
+
+message MusicTasteSummary {
+  repeated string top_genres = 1;
+  repeated string top_artists = 2;
+}
+
+message SearchHistoryItem {
+  string id = 1;
+  string query = 2;
+  google.protobuf.Timestamp created_at = 3;
+}

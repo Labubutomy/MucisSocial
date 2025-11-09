@@ -1,0 +1,25 @@
+# Proto compiled files - ignore generated Go code  
+proto/**/*.pb.go
+proto/**/*_grpc.pb.go
+
+# Keep proto source files
+!proto/**/*.proto
+
+# Go binary
+main
+users-service
+
+# Go build artifacts
+*.o
+*.a 
+*.so
+
+# Test binaries
+*.test
+
+# Coverage reports
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
