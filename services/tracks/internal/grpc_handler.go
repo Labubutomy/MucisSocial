@@ -70,12 +70,12 @@ func (h *GRPCHandler) UpdateTrackInfo(ctx context.Context, req *tracks.UpdateTra
 		return nil, status.Error(codes.InvalidArgument, "invalid track_id format")
 	}
 
-	if req.duration_sec < 0 {
+	if req.DurationSec < 0 {
 		return nil, status.Error(codes.InvalidArgument, "negative track duration")
 	}
 
 	// Обновляем URLs трека
-	err = h.service.UpdateTrackURLsAndDuration(ctx, trackID, req.CoverUrl, req.AudioUrl, int(req.duration_sec))
+	err = h.service.UpdateTrackURLsAndDuration(ctx, trackID, req.CoverUrl, req.AudioUrl, int(req.DurationSec))
 	if err != nil {
 		if err == ErrNotFound {
 			return nil, status.Error(codes.NotFound, "track not found")

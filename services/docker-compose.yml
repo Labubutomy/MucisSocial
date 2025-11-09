@@ -217,6 +217,100 @@ services:
       timeout: 10s
       retries: 3
 
+  # PostgreSQL Database for Tracks Service
+  postgres-tracks:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-tracks
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_tracks
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_tracks_data:/var/lib/postgresql/data
+      - ./tracks/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Tracks Service
+  tracks-service:
+    build:
+      context: ./tracks
+      dockerfile: Dockerfile
+    container_name: music-social-tracks
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - GRPC_PORT=50053
+      - DATABASE_URL=postgres://postgres:password@postgres-tracks:5432/music_social_tracks?sslmode=disable
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development
+    ports:
+      - "50053:50053"
+    depends_on:
+      postgres-tracks:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50053"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database for Playlist Service
+  postgres-playlist:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-playlist
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_playlist
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_playlist_data:/var/lib/postgresql/data
+      - ./playlist/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Playlist Service
+  playlist-service:
+    build:
+      context: ./playlist
+      dockerfile: Dockerfile
+    container_name: music-social-playlist
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - GRPC_PORT=50054
+      - DATABASE_URL=postgres://postgres:password@postgres-playlist:5432/music_social_playlist?sslmode=disable
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development
+    ports:
+      - "50054:50054"
+    depends_on:
+      postgres-playlist:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50054"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # API Gateway (Custom Go Gateway)
   api-gateway:
     build:
@@ -228,6 +322,8 @@ services:
     depends_on:
       - users-service
       - artists-service
+      - tracks-service
+      - playlist-service
     networks:
       - music-network
     restart: unless-stopped
@@ -236,7 +332,15 @@ services:
       - JWT_SECRET=your-super-secret-access-key-change-in-production
       - USERS_SERVICE_URL=users-service:50051
       - ARTISTS_SERVICE_URL=artists-service:50052
+      - TRACKS_SERVICE_URL=tracks-service:50053
+      - PLAYLIST_SERVICE_URL=playlist-service:50054
 
 volumes:
   postgres_data:
   postgres_artists_data:
+  postgres_tracks_data:
+  postgres_playlist_data:
+
+networks:
+  music-network:
+    driver: bridge

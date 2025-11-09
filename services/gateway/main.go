@@ -28,6 +28,8 @@ import (
 	"strings"
 
 	artistpb "github.com/MucisSocial/api-gateway/proto/artists/v1"
+	playlistpb "github.com/MucisSocial/api-gateway/proto/playlist/v1"
+	trackspb "github.com/MucisSocial/api-gateway/proto/tracks/v1"
 	pb "github.com/MucisSocial/api-gateway/proto/users/v1"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
@@ -41,9 +43,11 @@ import (
 )
 
 type Gateway struct {
-	userClient   pb.UserServiceClient
-	artistClient artistpb.ArtistServiceClient
-	jwtSecret    []byte
+	userClient     pb.UserServiceClient
+	artistClient   artistpb.ArtistServiceClient
+	tracksClient   trackspb.TracksServiceClient
+	playlistClient playlistpb.PlaylistServiceClient
+	jwtSecret      []byte
 }
 
 type ErrorResponse struct {
@@ -67,10 +71,26 @@ func main() {
 	}
 	defer artistConn.Close()
 
+	// Connect to tracks gRPC service
+	tracksConn, err := grpc.Dial("tracks-service:50053", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to tracks gRPC service: %v", err)
+	}
+	defer tracksConn.Close()
+
+	// Connect to playlist gRPC service
+	playlistConn, err := grpc.Dial("playlist-service:50054", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to playlist gRPC service: %v", err)
+	}
+	defer playlistConn.Close()
+
 	gateway := &Gateway{
-		userClient:   pb.NewUserServiceClient(userConn),
-		artistClient: artistpb.NewArtistServiceClient(artistConn),
-		jwtSecret:    []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
+		userClient:     pb.NewUserServiceClient(userConn),
+		artistClient:   artistpb.NewArtistServiceClient(artistConn),
+		tracksClient:   trackspb.NewTracksServiceClient(tracksConn),
+		playlistClient: playlistpb.NewPlaylistServiceClient(playlistConn),
+		jwtSecret:      []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
 	r := mux.NewRouter()
@@ -102,6 +122,20 @@ func main() {
 	protected.HandleFunc("/me/search-history", gateway.getSearchHistoryHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.addSearchHistoryHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.clearSearchHistoryHandler).Methods("DELETE", "OPTIONS")
+
+	// Tracks endpoints
+	protected.HandleFunc("/tracks", gateway.createTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/tracks/{trackId}", gateway.updateTrackInfoHandler).Methods("PUT", "OPTIONS")
+
+	// Playlist endpoints
+	protected.HandleFunc("/playlists", gateway.createPlaylistHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/playlists", gateway.getUserPlaylistsHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}", gateway.getPlaylistHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}", gateway.updatePlaylistHandler).Methods("PUT", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}", gateway.deletePlaylistHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}/tracks", gateway.getPlaylistTracksHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}/tracks", gateway.addTrackToPlaylistHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/playlists/{playlistId}/tracks/{trackId}", gateway.removeTrackFromPlaylistHandler).Methods("DELETE", "OPTIONS")
 
 	port := getEnv("PORT", "8080")
 	log.Printf("API Gateway starting on port %s", port)
@@ -628,6 +662,456 @@ func (g *Gateway) searchArtistsHandler(w http.ResponseWriter, r *http.Request) {
 	result := map[string]interface{}{
 		"query": query,
 		"items": resp.Artists,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// ===== TRACKS HANDLERS =====
+
+// @Summary Создать трек
+// @Description Создание нового трека
+// @Tags tracks
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateTrackRequest true "Данные для создания трека"
+// @Success 201 {object} CreateTrackResponse "Трек успешно создан"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/tracks [post]
+func (g *Gateway) createTrackHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title     string   `json:"title"`
+		ArtistIds []string `json:"artist_ids"`
+		Genre     string   `json:"genre"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	grpcReq := &trackspb.CreateTrackRequest{
+		Title:     req.Title,
+		ArtistIds: req.ArtistIds,
+		Genre:     req.Genre,
+	}
+
+	resp, err := g.tracksClient.CreateTrack(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"track_id": resp.TrackId,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Обновить информацию о треке
+// @Description Обновление информации о треке (cover_url, audio_url, duration)
+// @Tags tracks
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param trackId path string true "ID трека"
+// @Param request body UpdateTrackInfoRequest true "Данные для обновления трека"
+// @Success 200 {object} map[string]bool "Трек успешно обновлен"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Трек не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/tracks/{trackId} [put]
+func (g *Gateway) updateTrackInfoHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	trackId := vars["trackId"]
+
+	var req struct {
+		CoverUrl    string `json:"cover_url"`
+		AudioUrl    string `json:"audio_url"`
+		DurationSec int32  `json:"duration_sec"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	grpcReq := &trackspb.UpdateTrackInfoRequest{
+		TrackId:     trackId,
+		CoverUrl:    req.CoverUrl,
+		AudioUrl:    req.AudioUrl,
+		DurationSec: req.DurationSec,
+	}
+
+	resp, err := g.tracksClient.UpdateTrackInfo(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]bool{
+		"success": resp.Success,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// ===== PLAYLIST HANDLERS =====
+
+// @Summary Создать плейлист
+// @Description Создание нового плейлиста
+// @Tags playlists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreatePlaylistRequest true "Данные для создания плейлиста"
+// @Success 201 {object} CreatePlaylistResponse "Плейлист успешно создан"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists [post]
+func (g *Gateway) createPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	userId := r.Context().Value("user_id").(string)
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		IsPrivate   bool   `json:"is_private"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	grpcReq := &playlistpb.CreatePlaylistRequest{
+		UserId:      userId,
+		Name:        req.Name,
+		Description: req.Description,
+		IsPrivate:   req.IsPrivate,
+	}
+
+	resp, err := g.playlistClient.CreatePlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"playlist_id": resp.PlaylistId,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Получить плейлисты пользователя
+// @Description Получение списка плейлистов текущего пользователя
+// @Tags playlists
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Количество записей на странице" default(20)
+// @Param offset query int false "Смещение" default(0)
+// @Success 200 {object} GetUserPlaylistsResponse "Список плейлистов"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists [get]
+func (g *Gateway) getUserPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
+	userId := r.Context().Value("user_id").(string)
+
+	limit := 20
+	offset := 0
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	grpcReq := &playlistpb.GetUserPlaylistsRequest{
+		UserId: userId,
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	}
+
+	resp, err := g.playlistClient.GetUserPlaylists(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"playlists": resp.Playlists,
+		"total":     resp.Total,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Получить плейлист по ID
+// @Description Получение информации о плейлисте по его ID
+// @Tags playlists
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Success 200 {object} GetPlaylistResponse "Информация о плейлисте"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId} [get]
+func (g *Gateway) getPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+
+	grpcReq := &playlistpb.GetPlaylistRequest{
+		PlaylistId: playlistId,
+	}
+
+	resp, err := g.playlistClient.GetPlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp.Playlist)
+}
+
+// @Summary Обновить плейлист
+// @Description Обновление информации о плейлисте
+// @Tags playlists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Param request body UpdatePlaylistRequest true "Данные для обновления плейлиста"
+// @Success 200 {object} map[string]bool "Плейлист успешно обновлен"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId} [put]
+func (g *Gateway) updatePlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		IsPrivate   bool   `json:"is_private"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	grpcReq := &playlistpb.UpdatePlaylistRequest{
+		PlaylistId:  playlistId,
+		Name:        req.Name,
+		Description: req.Description,
+		IsPrivate:   req.IsPrivate,
+	}
+
+	resp, err := g.playlistClient.UpdatePlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]bool{
+		"success": resp.Success,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Удалить плейлист
+// @Description Удаление плейлиста
+// @Tags playlists
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Success 200 {object} map[string]bool "Плейлист успешно удален"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId} [delete]
+func (g *Gateway) deletePlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+	userId := r.Context().Value("user_id").(string)
+
+	grpcReq := &playlistpb.DeletePlaylistRequest{
+		PlaylistId: playlistId,
+		UserId:     userId,
+	}
+
+	resp, err := g.playlistClient.DeletePlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]bool{
+		"success": resp.Success,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Получить треки плейлиста
+// @Description Получение списка треков в плейлисте
+// @Tags playlists
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Param limit query int false "Количество записей на странице" default(50)
+// @Param offset query int false "Смещение" default(0)
+// @Success 200 {object} GetPlaylistTracksResponse "Список треков плейлиста"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId}/tracks [get]
+func (g *Gateway) getPlaylistTracksHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+
+	limit := 50
+	offset := 0
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	grpcReq := &playlistpb.GetPlaylistTracksRequest{
+		PlaylistId: playlistId,
+		Limit:      int32(limit),
+		Offset:     int32(offset),
+	}
+
+	resp, err := g.playlistClient.GetPlaylistTracks(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"tracks": resp.Tracks,
+		"total":  resp.Total,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Добавить трек в плейлист
+// @Description Добавление трека в плейлист
+// @Tags playlists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Param request body AddTrackToPlaylistRequest true "Данные для добавления трека"
+// @Success 200 {object} map[string]bool "Трек успешно добавлен"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист или трек не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId}/tracks [post]
+func (g *Gateway) addTrackToPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+	userId := r.Context().Value("user_id").(string)
+
+	var req struct {
+		TrackId string `json:"track_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	grpcReq := &playlistpb.AddTrackToPlaylistRequest{
+		PlaylistId: playlistId,
+		TrackId:    req.TrackId,
+		UserId:     userId,
+	}
+
+	resp, err := g.playlistClient.AddTrackToPlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]bool{
+		"success": resp.Success,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// @Summary Удалить трек из плейлиста
+// @Description Удаление трека из плейлиста
+// @Tags playlists
+// @Produce json
+// @Security BearerAuth
+// @Param playlistId path string true "ID плейлиста"
+// @Param trackId path string true "ID трека"
+// @Success 200 {object} map[string]bool "Трек успешно удален"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 404 {object} ErrorResponse "Плейлист или трек не найден"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/playlists/{playlistId}/tracks/{trackId} [delete]
+func (g *Gateway) removeTrackFromPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	playlistId := vars["playlistId"]
+	trackId := vars["trackId"]
+	userId := r.Context().Value("user_id").(string)
+
+	grpcReq := &playlistpb.RemoveTrackFromPlaylistRequest{
+		PlaylistId: playlistId,
+		TrackId:    trackId,
+		UserId:     userId,
+	}
+
+	resp, err := g.playlistClient.RemoveTrackFromPlaylist(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]bool{
+		"success": resp.Success,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
