@@ -138,8 +138,6 @@ tracks/
     {track_id}/
       original/
         original.wav                   # Исходный аудио файл
-      waveform/
-        waveform.json                  # Данные для визуализации волны
       metadata/
         tech_meta.json                 # Технические метаданные (duration, sample_rate, channels, codec)
         loudness.json                  # Интегрированная громкость (LUFS, true peak)
