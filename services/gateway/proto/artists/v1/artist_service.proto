@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package artists.v1;
+
+option go_package = "github.com/MucisSocial/api-gateway/proto/artists/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// Artist Service gRPC API
+service ArtistService {
+  // Artist CRUD operations
+  rpc CreateArtist(CreateArtistRequest) returns (CreateArtistResponse);
+  rpc GetArtistById(GetArtistByIdRequest) returns (GetArtistByIdResponse);
+  rpc UpdateArtist(UpdateArtistRequest) returns (UpdateArtistResponse);
+  rpc DeleteArtist(DeleteArtistRequest) returns (DeleteArtistResponse);
+  
+  // Artist queries
+  rpc ListArtists(ListArtistsRequest) returns (ListArtistsResponse);
+  rpc SearchArtists(SearchArtistsRequest) returns (SearchArtistsResponse);
+  rpc GetTrendingArtists(GetTrendingArtistsRequest) returns (GetTrendingArtistsResponse);
+}
+
+// Artist Messages
+message Artist {
+  string id = 1;
+  string name = 2;
+  string avatar_url = 3;
+  repeated string genres = 4;
+  int64 followers = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ArtistResponse {
+  string id = 1;
+  string name = 2;
+  string avatar_url = 3;
+  repeated string genres = 4;
+  int64 followers = 5;
+  repeated TopTrack top_tracks = 6;
+}
+
+message TopTrack {
+  string id = 1;
+  string title = 2;
+  string cover_url = 3;
+}
+
+message TrendingArtist {
+  string id = 1;
+  string name = 2;
+  string avatar_url = 3;
+  repeated string genres = 4;
+}
+
+// Request/Response Messages
+message CreateArtistRequest {
+  string name = 1;
+  string avatar_url = 2;
+  repeated string genres = 3;
+}
+
+message CreateArtistResponse {
+  ArtistResponse artist = 1;
+}
+
+message GetArtistByIdRequest {
+  string id = 1;
+}
+
+message GetArtistByIdResponse {
+  ArtistResponse artist = 1;
+}
+
+message UpdateArtistRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string avatar_url = 3;
+  repeated string genres = 4;
+}
+
+message UpdateArtistResponse {
+  ArtistResponse artist = 1;
+}
+
+message DeleteArtistRequest {
+  string id = 1;
+}
+
+message DeleteArtistResponse {}
+
+message ListArtistsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListArtistsResponse {
+  repeated ArtistResponse artists = 1;
+  int32 total = 2;
+}
+
+message SearchArtistsRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message SearchArtistsResponse {
+  repeated ArtistResponse artists = 1;
+}
+
+message GetTrendingArtistsRequest {
+  int32 limit = 1;
+}
+
+message GetTrendingArtistsResponse {
+  repeated TrendingArtist artists = 1;
+}

@@ -51,3 +51,196 @@ services:
       redpanda:
         condition: service_healthy
     restart: unless-stopped
+
+  streaming:
+    build:
+      context: ./streaming
+    environment:
+      SIGNING_SECRET: super-secret
+      BASE_URL: http://localhost:8000
+      CDN_BASE_URL: http://localhost:8001
+      PLAYLIST_TTL_SECONDS: 300
+      SEGMENT_TTL_SECONDS: 60
+      AVAILABLE_BITRATES: "[256000, 160000, 96000]"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: tracks
+      MINIO_SECURE: "false"
+      MINIO_REGION: ""
+
+    networks:
+      - music-network
+    restart: unless-stopped
+
+  cdn:
+    build:
+      context: ./CDN
+    environment:
+      CDN_ORIGIN_BASE_URL: http://streaming:8000
+      CDN_ORIGIN_API_BASE_URL: http://streaming:8000
+      CDN_CACHE_PLAYLIST_TTL: 60
+      CDN_CACHE_SEGMENT_TTL: 3600
+      CDN_CACHE_STATIC_TTL: 86400
+      CDN_CACHE_MAX_SIZE: 1000
+      CDN_LOG_LEVEL: INFO
+      CDN_LOG_REQUESTS: "true"
+      CDN_LOG_CACHE_STATS: "true"
+    networks:
+      - music-network
+    depends_on:
+      - streaming
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  mock-api:
+    build:
+      context: ./mock_api
+    ports:
+      - "8100:8000"
+    networks:
+      - music-network
+    restart: unless-stopped
+
+  # PostgreSQL Database for Users Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: music-social-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_users
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./users/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Users Service
+  users-service:
+    build:
+      context: ./users
+      dockerfile: Dockerfile
+    container_name: music-social-users
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=50051
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=music_social_users
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNS=25
+      - JWT_ACCESS_SECRET=your-super-secret-access-key-change-in-production
+      - JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
+      - JWT_ACCESS_EXPIRATION=15m
+      - JWT_REFRESH_EXPIRATION=168h
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database for Artists Service
+  postgres-artists:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-artists
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_artists
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_artists_data:/var/lib/postgresql/data
+      - ./artists/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Artists Service
+  artists-service:
+    build:
+      context: ./artists
+      dockerfile: Dockerfile
+    container_name: music-social-artists
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=50052
+      - DB_HOST=postgres-artists
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=music_social_artists
+      - DB_SSLMODE=disable
+      - DB_MAX_CONNS=25
+      - LOG_LEVEL=info
+      - ENVIRONMENT=development
+    ports:
+      - "50052:50052"
+    depends_on:
+      postgres-artists:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50052"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway (Custom Go Gateway)
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: music-social-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - users-service
+      - artists-service
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+      - USERS_SERVICE_URL=users-service:50051
+      - ARTISTS_SERVICE_URL=artists-service:50052
+
+volumes:
+  postgres_data:
+  postgres_artists_data:
+
+networks:
+  music-network:
+    external: true
