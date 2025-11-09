@@ -6,7 +6,6 @@ import { Avatar } from '@shared/ui/avatar'
 import {
   $query,
   $showDropdown,
-  $suggestionSeeds,
   $suggestions,
   focusChanged,
   hoverChanged,
@@ -21,7 +20,6 @@ export const AppHeader = () => {
   const {
     query,
     suggestions,
-    suggestionSeeds,
     showDropdown,
     navigateToHome,
     navigateToProfile,
@@ -33,7 +31,6 @@ export const AppHeader = () => {
   } = useUnit({
     query: $query,
     suggestions: $suggestions,
-    suggestionSeeds: $suggestionSeeds,
     showDropdown: $showDropdown,
     navigateToHome: routes.home.navigate,
     navigateToProfile: routes.profile.navigate,
@@ -43,8 +40,6 @@ export const AppHeader = () => {
     submitSearch: searchSubmitted,
     selectSuggestion: suggestionSelected,
   })
-
-  const navigateToSearch = useUnit(routes.search.navigate)
 
   useEffect(
     () => () => {

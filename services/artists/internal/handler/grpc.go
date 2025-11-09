@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/MucisSocial/artist-service/internal/domain"
-	pb "github.com/MucisSocial/artist-service/internal/pb"
+	pb "github.com/MucisSocial/artist-service/internal/pb/artists/v1"
 )
 
 type ArtistServiceHandler struct {

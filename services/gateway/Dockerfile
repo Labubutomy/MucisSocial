@@ -2,22 +2,38 @@
 FROM golang:1.23-alpine AS builder
 
 # Install necessary tools
-RUN apk add --no-cache git
+RUN apk add --no-cache git protobuf-dev protoc
 
 # Set working directory
 WORKDIR /app
 
 # Copy go mod files
-COPY go.mod ./
+COPY gateway/go.mod ./
 
 # Download dependencies
 RUN go mod download && go mod tidy
 
-# Copy source code and proto files
-COPY . .
+# Install protobuf Go plugins and swag
+ENV PATH="/root/go/bin:${PATH}"
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
+    go install github.com/swaggo/swag/cmd/swag@latest
 
-# Update modules after copying source code
-RUN go mod tidy
+# Copy gateway source code
+COPY gateway/ .
+
+# Copy proto files from users service
+COPY users/proto/users proto/users
+
+# Generate protobuf files
+RUN mkdir -p proto/users/v1 proto/artists/v1 && \
+    protoc --proto_path=proto \
+        --go_out=proto --go_opt=paths=source_relative \
+        --go-grpc_out=proto --go-grpc_opt=paths=source_relative \
+        proto/users/v1/user_service.proto proto/artists/v1/artist_service.proto
+
+# Generate Swagger documentation
+RUN swag init || true
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gateway .

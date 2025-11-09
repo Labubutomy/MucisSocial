@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # Server configuration
     host: str = Field(default="0.0.0.0", description="Server host")
-    port: int = Field(default=8080, ge=1, le=65535, description="Server port")
+    port: int = Field(default=8000, ge=1, le=65535, description="Server port")
 
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")

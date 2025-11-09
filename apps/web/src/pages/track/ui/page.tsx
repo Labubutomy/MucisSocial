@@ -22,7 +22,6 @@ export const TrackPage = () => {
     recommended,
     playerTrack,
     isPlaying,
-    stream,
     streamPending,
     playbackError,
     playbackTime,

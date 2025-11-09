@@ -1,38 +1,47 @@
 # Build stage
 FROM golang:1.23-alpine AS builder
 
-WORKDIR /app
+# Install necessary tools
+RUN apk add --no-cache git protobuf-dev protoc
 
-# Install dependencies
-RUN apk add --no-cache git netcat-openbsd
+# Set working directory
+WORKDIR /app
 
 # Copy go mod files
 COPY go.mod ./
-COPY go.su[m] ./
-RUN go mod download && go mod verify
+
+# Download dependencies
+RUN go mod download && go mod tidy
+
+# Install protobuf Go plugins
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Copy source code
 COPY . .
 
-# Build the application with optimizations
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -a -installsuffix cgo \
-    -o main ./cmd/main.go
+# Generate protobuf files
+RUN mkdir -p internal/pb
+RUN protoc --proto_path=proto \
+    --go_out=internal/pb --go_opt=paths=source_relative \
+    --go-grpc_out=internal/pb --go-grpc_opt=paths=source_relative \
+    proto/artists/v1/artist_service.proto
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/main.go
 
 # Final stage
 FROM alpine:latest
 
+# Install ca-certificates for HTTPS and netcat for healthcheck
 RUN apk --no-cache add ca-certificates netcat-openbsd tzdata && \
     addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
 WORKDIR /app
 
-# Copy the binary from builder
+# Copy the binary from builder stage
 COPY --from=builder /app/main .
-
-# Copy migrations
 COPY --from=builder /app/migrations ./migrations
 
 # Change ownership to non-root user
@@ -48,5 +57,5 @@ EXPOSE 50052
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD nc -z localhost 50052 || exit 1
 
-# Run the binary
+# Command to run
 CMD ["./main"]

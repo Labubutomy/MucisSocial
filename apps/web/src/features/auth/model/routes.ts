@@ -1,5 +1,4 @@
-import { createEvent, createStore, sample } from 'effector'
-import { createRoute } from 'atomic-router'
+import { createEvent, createStore } from 'effector'
 import { routes } from '@shared/router'
 import { $session, $user } from './index'
 

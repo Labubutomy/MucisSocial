@@ -85,7 +85,7 @@ export const CurationsPage = () => {
         <Card padding="lg" className="space-y-6 bg-secondary/20">
           {user ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {user.musicTasteSummary.topArtists.map(artist => (
+              {(user.musicTasteSummary?.topArtists ?? []).map(artist => (
                 <div
                   key={artist}
                   className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-secondary/40 p-4 text-left transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/20"
@@ -97,6 +97,11 @@ export const CurationsPage = () => {
                   </p>
                 </div>
               ))}
+              {(user.musicTasteSummary?.topArtists?.length ?? 0) === 0 && (
+                <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/30 px-6 py-10 text-center text-sm text-muted-foreground">
+                  Подборки по артистам появятся, когда мы узнаем ваши предпочтения.
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Загрузка артистов...</p>

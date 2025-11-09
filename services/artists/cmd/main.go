@@ -23,7 +23,7 @@ import (
 
 	"github.com/MucisSocial/artist-service/internal/config"
 	"github.com/MucisSocial/artist-service/internal/handler"
-	pb "github.com/MucisSocial/artist-service/internal/pb"
+	pb "github.com/MucisSocial/artist-service/internal/pb/artists/v1"
 	"github.com/MucisSocial/artist-service/internal/repository"
 	"github.com/MucisSocial/artist-service/internal/service"
 )

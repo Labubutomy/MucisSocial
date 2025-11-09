@@ -103,7 +103,7 @@ class InMemoryStore:
             credits=["Vulpes Vult"],
             bpm=102,
             stream_quality=["aac_96", "aac_160", "aac_256"],
-            master_url="http://localhost:8001/origin/tracks/1/1/transcoded/master.m3u8",
+            master_url="http://localhost:8000/origin/tracks/1/1/transcoded/master.m3u8",
         )
         self.tracks[track.id] = track
 
