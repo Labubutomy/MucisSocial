@@ -31,23 +31,65 @@ func (s *Service) ListTracks(ctx context.Context, limit, offset int, artistID *u
 	return s.repo.List(ctx, limit, offset, artistID)
 }
 
-// CreateTrack создать трек (admin)
-func (s *Service) CreateTrack(ctx context.Context, title, artistName, genre string, artistID uuid.UUID) (*Track, error) {
+// validateAndGetArtists валидирует и получает артистов из БД
+func (s *Service) validateAndGetArtists(ctx context.Context, artistIDs []uuid.UUID) ([]Artist, error) {
+	if len(artistIDs) == 0 {
+		return nil, ErrBadRequest
+	}
+
+	artists, err := s.repo.GetArtists(ctx, artistIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if !validateArtists(artists, artistIDs) {
+		return nil, ErrNotFound
+	}
+
+	return artists, nil
+}
+
+// CreateTrack создать трек (admin) - принимает массив artist_ids
+func (s *Service) CreateTrack(ctx context.Context, title string, artistIDs []uuid.UUID, genre string) (*Track, error) {
+	artists, err := s.validateAndGetArtists(ctx, artistIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	track := &Track{
-		ID:         uuid.New(),
-		Title:      title,
-		ArtistID:   artistID,
-		ArtistName: artistName,
-		Genre:      genre,
-		Status:     StatusUploaded,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:        uuid.New(),
+		Title:     title,
+		Artists:   artists,
+		Genre:     genre,
+		Status:    StatusUploaded,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	return track, s.repo.Create(ctx, track)
+}
+
+// CreateTrackGRPC создать трек через gRPC (принимает массив artist_ids)
+func (s *Service) CreateTrackGRPC(ctx context.Context, title string, artistIDs []uuid.UUID, durationSec int, genre string) (*Track, error) {
+	artists, err := s.validateAndGetArtists(ctx, artistIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	track := &Track{
+		ID:        uuid.New(),
+		Title:     title,
+		Artists:   artists,
+		Genre:     genre,
+		Duration:  durationSec,
+		Status:    StatusUploaded,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	return track, s.repo.Create(ctx, track)
 }
 
 // UpdateTrack обновить трек (admin)
-func (s *Service) UpdateTrack(ctx context.Context, id uuid.UUID, title, artistName, genre string) error {
+func (s *Service) UpdateTrack(ctx context.Context, id uuid.UUID, title string, artistIDs []uuid.UUID, genre string) error {
 	track, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -56,8 +98,12 @@ func (s *Service) UpdateTrack(ctx context.Context, id uuid.UUID, title, artistNa
 	if title != "" {
 		track.Title = title
 	}
-	if artistName != "" {
-		track.ArtistName = artistName
+	if len(artistIDs) > 0 {
+		artists, err := s.validateAndGetArtists(ctx, artistIDs)
+		if err != nil {
+			return err
+		}
+		track.Artists = artists
 	}
 	if genre != "" {
 		track.Genre = genre
@@ -72,42 +118,8 @@ func (s *Service) DeleteTrack(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// HandleTrackUploaded обработка события загрузки
-func (s *Service) HandleTrackUploaded(ctx context.Context, event TrackUploadedEvent) error {
-	trackID, _ := uuid.Parse(event.TrackID)
-	artistID, _ := uuid.Parse(event.ArtistID)
-
-	track := &Track{
-		ID:         trackID,
-		Title:      event.Title,
-		ArtistID:   artistID,
-		ArtistName: event.ArtistName,
-		Genre:      event.Genre,
-		Status:     StatusUploaded,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-	}
-	return s.repo.Create(ctx, track)
-}
-
-// HandleTranscodingCompleted обработка завершения транскодирования
-func (s *Service) HandleTranscodingCompleted(ctx context.Context, event TranscodingCompletedEvent) error {
-	trackID, _ := uuid.Parse(event.TrackID)
-
-	if event.Status == "ready" {
-		track, err := s.repo.GetByID(ctx, trackID)
-		if err != nil {
-			return err
-		}
-
-		track.Status = StatusReady
-		track.AudioURL = event.AudioURL
-		track.CoverURL = event.CoverURL
-		track.Duration = event.Duration
-		track.UpdatedAt = time.Now()
-
-		return s.repo.Update(ctx, track)
-	}
-
-	return s.repo.UpdateStatus(ctx, trackID, StatusFailed)
+// UpdateTrackURLs обновить URLs трека (cover_url, audio_url)
+func (s *Service) UpdateTrackURLs(ctx context.Context, trackID uuid.UUID, coverURL, audioURL string) error {
+	// Используем специальный метод для обновления только URLs
+	return s.repo.UpdateURLs(ctx, trackID, coverURL, audioURL)
 }
