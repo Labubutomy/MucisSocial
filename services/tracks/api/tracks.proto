@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tracks;
+package tracks.v1;
 
 option go_package = "github.com/Labubutomy/MucisSocial/services/tracks/api;tracks";
 

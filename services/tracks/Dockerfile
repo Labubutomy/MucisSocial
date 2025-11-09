@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install protoc and dependencies
 RUN apk add --no-cache protobuf protobuf-dev
@@ -39,7 +39,7 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/bin/tracks-service .
 
-EXPOSE 8080 50051
+EXPOSE 8080 50053
 
 CMD ["./tracks-service"]
 
