@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 
+	artistpb "github.com/MucisSocial/api-gateway/proto/artists/v1"
 	pb "github.com/MucisSocial/api-gateway/proto/users/v1"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
@@ -40,8 +41,9 @@ import (
 )
 
 type Gateway struct {
-	userClient pb.UserServiceClient
-	jwtSecret  []byte
+	userClient   pb.UserServiceClient
+	artistClient artistpb.ArtistServiceClient
+	jwtSecret    []byte
 }
 
 type ErrorResponse struct {
@@ -51,16 +53,24 @@ type ErrorResponse struct {
 }
 
 func main() {
-	// Connect to gRPC service
-	conn, err := grpc.Dial("users-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Connect to user gRPC service
+	userConn, err := grpc.Dial("users-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to connect to gRPC service: %v", err)
+		log.Fatalf("Failed to connect to users gRPC service: %v", err)
 	}
-	defer conn.Close()
+	defer userConn.Close()
+
+	// Connect to artist gRPC service
+	artistConn, err := grpc.Dial("artists-service:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to artists gRPC service: %v", err)
+	}
+	defer artistConn.Close()
 
 	gateway := &Gateway{
-		userClient: pb.NewUserServiceClient(conn),
-		jwtSecret:  []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
+		userClient:   pb.NewUserServiceClient(userConn),
+		artistClient: artistpb.NewArtistServiceClient(artistConn),
+		jwtSecret:    []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
 	r := mux.NewRouter()
@@ -78,6 +88,11 @@ func main() {
 	r.HandleFunc("/api/v1/auth/sign-up", gateway.signUpHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/auth/sign-in", gateway.signInHandler).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/v1/auth/refresh", gateway.refreshHandler).Methods("POST", "OPTIONS")
+
+	// Public artist endpoints (no JWT required) - specific routes first
+	r.HandleFunc("/api/v1/artists/trending", gateway.getTrendingArtistsHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/artists/search", gateway.searchArtistsHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/artists/{artistId}", gateway.getArtistByIdHandler).Methods("GET", "OPTIONS")
 
 	// Protected endpoints (JWT required)
 	protected := r.PathPrefix("/api/v1").Subrouter()
@@ -511,4 +526,110 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// Artist Handlers
+
+// getArtistByIdHandler godoc
+//
+//	@Summary		Get artist by ID
+//	@Description	Get detailed information about a specific artist
+//	@Tags			Artists
+//	@Accept			json
+//	@Produce		json
+//	@Param			artistId	path		string	true	"Artist ID"
+//	@Success		200			{object}	map[string]interface{}
+//	@Failure		400			{object}	ErrorResponse
+//	@Failure		404			{object}	ErrorResponse
+//	@Failure		500			{object}	ErrorResponse
+//	@Router			/artists/{artistId} [get]
+func (g *Gateway) getArtistByIdHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	artistId := vars["artistId"]
+
+	if artistId == "" {
+		writeError(w, "Artist ID is required", http.StatusBadRequest)
+		return
+	}
+
+	req := &artistpb.GetArtistByIdRequest{
+		Id: artistId,
+	}
+
+	resp, err := g.artistClient.GetArtistById(r.Context(), req)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp.Artist)
+}
+
+// getTrendingArtistsHandler godoc
+//
+//	@Summary		Get trending artists
+//	@Description	Get list of trending artists
+//	@Tags			Artists
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/artists/trending [get]
+func (g *Gateway) getTrendingArtistsHandler(w http.ResponseWriter, r *http.Request) {
+	req := &artistpb.GetTrendingArtistsRequest{
+		Limit: 20, // Default limit
+	}
+
+	resp, err := g.artistClient.GetTrendingArtists(r.Context(), req)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"items": resp.Artists,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// searchArtistsHandler godoc
+//
+//	@Summary		Search artists
+//	@Description	Search for artists by query
+//	@Tags			Artists
+//	@Accept			json
+//	@Produce		json
+//	@Param			q	query		string	true	"Search query"
+//	@Success		200	{object}	map[string]interface{}
+//	@Failure		400	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/artists/search [get]
+func (g *Gateway) searchArtistsHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		writeError(w, "Search query is required", http.StatusBadRequest)
+		return
+	}
+
+	req := &artistpb.SearchArtistsRequest{
+		Query: query,
+		Limit: 20, // Default limit
+	}
+
+	resp, err := g.artistClient.SearchArtists(r.Context(), req)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	result := map[string]interface{}{
+		"query": query,
+		"items": resp.Artists,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
