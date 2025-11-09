@@ -8,12 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/MucisSocial/upload/internal/config"
-	"github.com/MucisSocial/upload/internal/messaging"
-	"github.com/MucisSocial/upload/internal/server"
-	"github.com/MucisSocial/upload/internal/storage"
-	"github.com/MucisSocial/upload/internal/tracks"
-	pb "github.com/MucisSocial/upload/proto"
+	"github.com/MusicSocial/upload/internal/config"
+	"github.com/MusicSocial/upload/internal/messaging"
+	"github.com/MusicSocial/upload/internal/server"
+	"github.com/MusicSocial/upload/internal/storage"
+	"github.com/MusicSocial/upload/internal/tracks"
+	pb "github.com/MusicSocial/upload/proto"
 	"google.golang.org/grpc"
 )
 
