@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/MucisSocial/upload/internal/config"
+	"github.com/MusicSocial/upload/internal/config"
 	"github.com/segmentio/kafka-go"
 )
 
