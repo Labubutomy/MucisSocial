@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MucisSocial/transcoder/internal/storage"
-	"github.com/MucisSocial/transcoder/internal/tracks"
+	"github.com/MusicSocial/transcoder/internal/storage"
+	"github.com/MusicSocial/transcoder/internal/tracks"
 )
 
 type FFmpegTranscoder struct {
