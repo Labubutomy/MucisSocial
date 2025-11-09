@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package tracks.v1;
+
+option go_package = "github.com/Labubutomy/MucisSocial/services/tracks/api;tracks";
+
+service TracksService {
+  // Создать трек
+  rpc CreateTrack(CreateTrackRequest) returns (CreateTrackResponse);
+  
+  // Обновить информацию о треке (cover_url, audio_url)
+  rpc UpdateTrackInfo(UpdateTrackInfoRequest) returns (UpdateTrackInfoResponse);
+}
+
+// Запрос на создание трека
+message CreateTrackRequest {
+  string title = 1;
+  repeated string artist_ids = 2;  // Массив UUID артистов в формате строки
+  string genre = 3;
+}
+
+// Ответ на создание трека
+message CreateTrackResponse {
+  string track_id = 1;  // UUID в формате строки
+}
+
+// Запрос на обновление информации о треке
+message UpdateTrackInfoRequest {
+  string track_id = 1;  // UUID в формате строки
+  string cover_url = 2;  // Путь до S3/Minio
+  string audio_url = 3;  // Путь до S3/Minio
+  int32 duration_sec = 4;
+}
+
+// Ответ на обновление информации о треке
+message UpdateTrackInfoResponse {
+  bool success = 1;
+}
+

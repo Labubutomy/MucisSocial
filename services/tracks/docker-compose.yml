@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  tracks-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"  # HTTP
+      - "50051:50051"  # gRPC
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/tracks_db?sslmode=disable
+      PORT: "8080"
+      GRPC_PORT: "50051"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tracks_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

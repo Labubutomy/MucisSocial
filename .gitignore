@@ -1,5 +1,6 @@
 .DS_Store
 
+upload-track.sh
 local/
 
 # Proto compiled files
