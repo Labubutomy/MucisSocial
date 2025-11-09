@@ -19,3 +19,6 @@ coverage.html
 
 # Dependency directories
 vendor/
+
+# Documentation files
+docs/

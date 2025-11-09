@@ -1,3 +1,20 @@
+// Package main MucissSocial API Gateway
+//
+//	@title			MucissSocial API Gateway
+//	@version		1.0.0
+//	@description	API Gateway для сервиса MucissSocial. Предоставляет REST API для взаимодействия с микросервисами.
+//
+//	@contact.name	MucissSocial Team
+//
+//	@host		localhost:8080
+//	@BasePath	/
+//
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				JWT токен в формате 'Bearer {token}'
+//
+//	@schemes	http https
 package main
 
 import (
@@ -13,10 +30,13 @@ import (
 	pb "github.com/MucisSocial/api-gateway/proto/users/v1"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+
+	_ "github.com/MucisSocial/api-gateway/docs"
 )
 
 type Gateway struct {
@@ -48,6 +68,9 @@ func main() {
 	// CORS middleware
 	r.Use(corsMiddleware)
 
+	// Swagger documentation
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+
 	// Health check
 	r.HandleFunc("/__health", healthHandler).Methods("GET")
 
@@ -67,6 +90,7 @@ func main() {
 
 	port := getEnv("PORT", "8080")
 	log.Printf("API Gateway starting on port %s", port)
+	log.Printf("Swagger documentation available at: http://localhost:%s/swagger/", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
 
@@ -122,11 +146,32 @@ func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// healthHandler godoc
+//
+//	@Summary		Проверка состояния сервиса
+//	@Description	Возвращает статус работоспособности API Gateway
+//	@Tags			Health
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	map[string]string
+//	@Router			/__health [get]
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// signUpHandler godoc
+//
+//	@Summary		Регистрация нового пользователя
+//	@Description	Создание нового аккаунта пользователя
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		object{email=string,password=string,username=string}	true	"Данные для регистрации"
+//	@Success		200		{object}	object{access_token=string,refresh_token=string,user=object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		409		{object}	ErrorResponse
+//	@Router			/api/v1/auth/sign-up [post]
 func (g *Gateway) signUpHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
@@ -159,6 +204,18 @@ func (g *Gateway) signUpHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// signInHandler godoc
+//
+//	@Summary		Вход в систему
+//	@Description	Аутентификация пользователя по email и паролю
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		object{email=string,password=string}	true	"Данные для входа"
+//	@Success		200		{object}	object{access_token=string,refresh_token=string,user=object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Router			/api/v1/auth/sign-in [post]
 func (g *Gateway) signInHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
@@ -189,6 +246,18 @@ func (g *Gateway) signInHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// refreshHandler godoc
+//
+//	@Summary		Обновление токена
+//	@Description	Получение нового access token с помощью refresh token
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		object{refresh_token=string}	true	"Refresh token"
+//	@Success		200		{object}	object{access_token=string,refresh_token=string}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Router			/api/v1/auth/refresh [post]
 func (g *Gateway) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
@@ -216,6 +285,17 @@ func (g *Gateway) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getMeHandler godoc
+//
+//	@Summary		Получение профиля текущего пользователя
+//	@Description	Возвращает информацию о текущем аутентифицированном пользователе
+//	@Tags			User Profile
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	object{user=object}
+//	@Failure		401	{object}	ErrorResponse
+//	@Router			/api/v1/me [get]
 func (g *Gateway) getMeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 
@@ -235,6 +315,19 @@ func (g *Gateway) getMeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// updateMeHandler godoc
+//
+//	@Summary		Обновление профиля пользователя
+//	@Description	Обновление информации профиля текущего пользователя
+//	@Tags			User Profile
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body		object{username=string,avatar_url=string}	true	"Данные для обновления профиля"
+//	@Success		200		{object}	object{user=object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Router			/api/v1/me [put]
 func (g *Gateway) updateMeHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 
@@ -266,6 +359,19 @@ func (g *Gateway) updateMeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getSearchHistoryHandler godoc
+//
+//	@Summary		Получение истории поиска
+//	@Description	Возвращает историю поиска пользователя
+//	@Tags			Search History
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			limit	query		int	false	"Количество записей для возврата (по умолчанию 10)"	default(10)
+//	@Success		200		{object}	object{items=[]object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Router			/api/v1/me/search-history [get]
 func (g *Gateway) getSearchHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 	limit := r.URL.Query().Get("limit")
@@ -297,6 +403,19 @@ func (g *Gateway) getSearchHistoryHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// addSearchHistoryHandler godoc
+//
+//	@Summary		Добавление записи в историю поиска
+//	@Description	Добавляет новый поисковый запрос в историю пользователя
+//	@Tags			Search History
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body		object{query=string}	true	"Поисковый запрос"
+//	@Success		200		{object}	object{item=object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Router			/api/v1/me/search-history [post]
 func (g *Gateway) addSearchHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 
@@ -326,6 +445,17 @@ func (g *Gateway) addSearchHistoryHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// clearSearchHistoryHandler godoc
+//
+//	@Summary		Очистка истории поиска
+//	@Description	Удаляет всю историю поиска пользователя
+//	@Tags			Search History
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	object{success=bool}
+//	@Failure		401	{object}	ErrorResponse
+//	@Router			/api/v1/me/search-history [delete]
 func (g *Gateway) clearSearchHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 
