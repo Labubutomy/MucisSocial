@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/MucisSocial/transcoder/internal/broker"
-	"github.com/MucisSocial/transcoder/internal/config"
-	"github.com/MucisSocial/transcoder/internal/storage"
-	"github.com/MucisSocial/transcoder/internal/tracks"
-	"github.com/MucisSocial/transcoder/internal/transcoder"
+	"github.com/MusicSocial/transcoder/internal/broker"
+	"github.com/MusicSocial/transcoder/internal/config"
+	"github.com/MusicSocial/transcoder/internal/storage"
+	"github.com/MusicSocial/transcoder/internal/tracks"
+	"github.com/MusicSocial/transcoder/internal/transcoder"
 )
 
 func main() {
