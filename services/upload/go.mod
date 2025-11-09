@@ -1,4 +1,4 @@
-module github.com/MucisSocial/upload
+module github.com/MusicSocial/upload
 
 go 1.23
 
