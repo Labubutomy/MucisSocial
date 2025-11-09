@@ -1,3 +1,33 @@
 .DS_Store
 
 local/
+
+# Proto compiled files
+*.pb.go
+*_grpc.pb.go
+
+# Go binary files
+main
+*/main
+
+# Go dependency files
+vendor/
+go.sum
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker build cache
+.dockerignore
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+logs/
