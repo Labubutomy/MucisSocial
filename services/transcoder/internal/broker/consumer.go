@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"github.com/MucisSocial/transcoder/internal/config"
-	"github.com/MucisSocial/transcoder/internal/transcoder"
+	"github.com/MusicSocial/transcoder/internal/transcoder"
 	"github.com/segmentio/kafka-go"
 )
 
