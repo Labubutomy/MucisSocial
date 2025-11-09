@@ -12,7 +12,7 @@ main
 
 # Go dependency files
 vendor/
-go.sum
+# go.sum - should be committed to ensure reproducible builds
 
 # IDE files
 .vscode/
