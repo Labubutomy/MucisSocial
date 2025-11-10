@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"github.com/MusicSocial/upload/internal/config"
-	trackspb "github.com/MusicSocial/upload/proto/tracks"
+	trackspb "github.com/MusicSocial/upload/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Client interface {
-	CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int32) (string, error)
+	CreateTrack(ctx context.Context, name string, artistIDs []string, genre string) (string, error)
 	Close() error
 }
 
@@ -32,7 +32,7 @@ func NewTrackClient(cfg *config.TrackServiceConfig) (*GRPCClient, error) {
 	}, nil
 }
 
-func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []string, genre string, duration int32) (string, error) {
+func (c *GRPCClient) CreateTrack(ctx context.Context, name string, artistIDs []string, genre string) (string, error) {
 	resp, err := c.client.CreateTrack(ctx, &trackspb.CreateTrackRequest{
 		Title:     name,
 		ArtistIds: artistIDs,

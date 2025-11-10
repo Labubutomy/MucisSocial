@@ -83,7 +83,7 @@ func (s *UploadServer) UploadTrack(stream pb.UploadService_UploadTrackServer) er
 	log.Printf("Received track data: %d bytes", buffer.Len())
 
 	ctx := stream.Context()
-	trackID, err := s.trackClient.CreateTrack(ctx, trackName, artistIDs, genre, 0)
+	trackID, err := s.trackClient.CreateTrack(ctx, trackName, artistIDs, genre)
 	if err != nil {
 		return fmt.Errorf("failed to create track in track service: %w", err)
 	}

@@ -49,7 +49,7 @@ func Load() *Config {
 			TranscoderTopic: getEnv("TRANSCODER_TOPIC", "transcoder-tasks"),
 		},
 		Tracks: TrackServiceConfig{
-			Address: getEnv("TRACK_SERVICE_ADDR", "track-service:50052"),
+			Address: getEnv("TRACK_SERVICE_ADDR", "tracks-service:50051"),
 		},
 	}
 }
