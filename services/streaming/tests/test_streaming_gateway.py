@@ -68,7 +68,7 @@ def signer(settings: Settings) -> URLSigner:
 @pytest.fixture()
 def storage_objects() -> dict[str, bytes | str]:
     return {
-        "tracks/artist-1/track-1/transcoded/master.m3u8": "\n".join(
+        "artist-1/track-1/transcoded/master.m3u8": "\n".join(
             [
                 "#EXTM3U",
                 "#EXT-X-STREAM-INF:BANDWIDTH=256000",
@@ -80,7 +80,7 @@ def storage_objects() -> dict[str, bytes | str]:
                 "",
             ]
         ),
-        "tracks/artist-1/track-1/transcoded/aac_256/index.m3u8": "\n".join(
+        "artist-1/track-1/transcoded/aac_256/index.m3u8": "\n".join(
             [
                 "#EXTM3U",
                 "#EXT-X-TARGETDURATION:4",
@@ -93,11 +93,11 @@ def storage_objects() -> dict[str, bytes | str]:
                 "",
             ]
         ),
-        "tracks/artist-1/track-1/transcoded/aac_256/init.mp4": b"init-segment",
-        "tracks/artist-1/track-1/transcoded/aac_256/chunk_0001.m4s": b"segment-1",
-        "tracks/artist-1/track-1/transcoded/aac_256/chunk_0002.m4s": b"segment-2",
-        "tracks/artist-1/track-1/transcoded/aac_160/index.m3u8": "#EXTM3U\n",
-        "tracks/artist-1/track-1/transcoded/aac_96/index.m3u8": "#EXTM3U\n",
+        "artist-1/track-1/transcoded/aac_256/init.mp4": b"init-segment",
+        "artist-1/track-1/transcoded/aac_256/chunk_0001.m4s": b"segment-1",
+        "artist-1/track-1/transcoded/aac_256/chunk_0002.m4s": b"segment-2",
+        "artist-1/track-1/transcoded/aac_160/index.m3u8": "#EXTM3U\n",
+        "artist-1/track-1/transcoded/aac_96/index.m3u8": "#EXTM3U\n",
     }
 
 
@@ -135,7 +135,7 @@ def test_stream_endpoint_returns_signed_urls(client: TestClient, settings: Setti
     assert payload["expires_in"] == settings.playlist_ttl_seconds
 
     master_path, exp, sig = _extract_signature_parts(payload["master_url"])
-    assert master_path == "/tracks/artist-1/track-1/transcoded/master.m3u8"
+    assert master_path == "/artist-1/track-1/transcoded/master.m3u8"  # Bucket уже называется "tracks"
     assert exp > 0
     assert sig
 

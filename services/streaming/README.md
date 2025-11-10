@@ -35,17 +35,17 @@ FastAPI-based origin service that provides signed playlists and segments for ada
        ↓
    Получает master.m3u8 URL + variant URLs (все подписаны)
        ↓
-Плеер → GET /origin/tracks/.../master.m3u8?sig=...&exp=...
+Плеер → GET /origin/{artist_id}/{track_id}/transcoded/master.m3u8?sig=...&exp=...
        ↓
    Origin проверяет подпись, читает master.m3u8 из MinIO,
    переписывает variant URLs с новыми подписями
        ↓
-Плеер → GET /origin/tracks/.../aac_256/index.m3u8?sig=...&exp=...
+Плеер → GET /origin/{artist_id}/{track_id}/transcoded/aac_256/index.m3u8?sig=...&exp=...
        ↓
    Origin проверяет подпись, читает variant playlist,
    переписывает сегменты (init.mp4, chunk_*.m4s) с новыми подписями
        ↓
-Плеер → GET /origin/tracks/.../aac_256/chunk_001.m4s?sig=...&exp=...
+Плеер → GET /origin/{artist_id}/{track_id}/transcoded/aac_256/chunk_001.m4s?sig=...&exp=...
        ↓
    Origin проверяет подпись, отдаёт бинарный сегмент из MinIO
 ```
@@ -132,35 +132,36 @@ poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ### Структура файлов трека
 
+Bucket называется `tracks`, структура внутри bucket:
+
 ```
-tracks/
-  {artist_id}/
-    {track_id}/
-      original/
-        original.wav                   # Исходный аудио файл
-      metadata/
-        tech_meta.json                 # Технические метаданные (duration, sample_rate, channels, codec)
-        loudness.json                  # Интегрированная громкость (LUFS, true peak)
-      transcoded/
-        master.m3u8                    # Master playlist для HLS
-        aac_256/
-          index.m3u8                   # Variant playlist для 256kbps
-          init.mp4                     # Init segment для fMP4
-          chunk_001.m4s                # Media segments (fMP4)
-          chunk_002.m4s
-          ...
-        aac_160/
-          index.m3u8
-          init.mp4
-          chunk_001.m4s
-          chunk_002.m4s
-          ...
-        aac_96/
-          index.m3u8
-          init.mp4
-          chunk_001.m4s
-          chunk_002.m4s
-          ...
+{artist_id}/
+  {track_id}/
+    original/
+      original.wav                   # Исходный аудио файл
+    metadata/
+      tech_meta.json                 # Технические метаданные (duration, sample_rate, channels, codec)
+      loudness.json                  # Интегрированная громкость (LUFS, true peak)
+    transcoded/
+      master.m3u8                    # Master playlist для HLS
+      aac_256/
+        index.m3u8                   # Variant playlist для 256kbps
+        init.mp4                     # Init segment для fMP4
+        chunk_001.m4s                # Media segments (fMP4)
+        chunk_002.m4s
+        ...
+      aac_160/
+        index.m3u8
+        init.mp4
+        chunk_001.m4s
+        chunk_002.m4s
+        ...
+      aac_96/
+        index.m3u8
+        init.mp4
+        chunk_001.m4s
+        chunk_002.m4s
+        ...
 ```
 
 **Важно:** Плейлисты в MinIO содержат относительные пути. Origin endpoint переписывает их на лету с подписями.
@@ -183,19 +184,19 @@ GET /api/stream/550e8400-e29b-41d4-a716-446655440000?artist_id=660e8400-e29b-41d
 **Response:**
 ```json
 {
-  "master_url": "http://localhost:8000/origin/tracks/{artist_id}/{track_id}/transcoded/master.m3u8?exp=123&sig=abc",
+  "master_url": "http://localhost:8000/origin/{artist_id}/{track_id}/transcoded/master.m3u8?exp=123&sig=abc",
   "variants": [
     {
       "bitrate": 256000,
-      "url": "http://localhost:8000/origin/tracks/{artist_id}/{track_id}/transcoded/aac_256/index.m3u8?exp=123&sig=def"
+      "url": "http://localhost:8000/origin/{artist_id}/{track_id}/transcoded/aac_256/index.m3u8?exp=123&sig=def"
     },
     {
       "bitrate": 160000,
-      "url": "http://localhost:8000/origin/tracks/{artist_id}/{track_id}/transcoded/aac_160/index.m3u8?exp=123&sig=ghi"
+      "url": "http://localhost:8000/origin/{artist_id}/{track_id}/transcoded/aac_160/index.m3u8?exp=123&sig=ghi"
     },
     {
       "bitrate": 96000,
-      "url": "http://localhost:8000/origin/tracks/{artist_id}/{track_id}/transcoded/aac_96/index.m3u8?exp=123&sig=jkl"
+      "url": "http://localhost:8000/origin/{artist_id}/{track_id}/transcoded/aac_96/index.m3u8?exp=123&sig=jkl"
     }
   ],
   "expires_in": 300
@@ -324,7 +325,7 @@ poetry run pytest
 
 **Примечание:** Для работы плеера необходимо:
 - Сервис по умолчанию работает без CDN и использует свой `BASE_URL` (по умолчанию `http://localhost:8000`)
-- Иметь реальные HLS файлы в MinIO по пути `tracks/{artist_id}/{track_id}/transcoded/...`
+- Иметь реальные HLS файлы в MinIO bucket `tracks` по пути `{artist_id}/{track_id}/transcoded/...`
 
 ## Будущие улучшения
 

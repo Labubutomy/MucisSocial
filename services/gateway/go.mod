@@ -1,4 +1,4 @@
-module github.com/MucisSocial/api-gateway
+module github.com/MusicSocial/api-gateway
 
 go 1.23.0
 

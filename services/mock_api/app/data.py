@@ -80,30 +80,23 @@ class InMemoryStore:
         self._seed()
 
     def _seed(self) -> None:
-        artist = Artist(
-            id="1",
-            name="Vulpes Vult",
-            avatar_url=CDN_IMAGE_URL,
-            genres=["Синтвейв", "Электроника"],
-            followers=1204300,
-            top_tracks=["1"],
-        )
-        self.artists[artist.id] = artist
-
+        # Mock artists removed - use scripts/faker/create_artists_and_tracks.py to populate data
+        # Only keeping minimal test data for tracks, users, and playlists
+        
         track = Track(
             id="1",
             title="Терновый куст",
             duration_sec=214,
             cover_url=CDN_IMAGE_URL,
-            artist_id=artist.id,
+            artist_id="1",  # Placeholder artist_id
             album_id="album-1",
             album_title="Starlight Bloom",
             album_cover_url=CDN_IMAGE_URL,
             album_release_date="2024-02-10",
-            credits=["Vulpes Vult"],
+            credits=["Artist"],
             bpm=102,
             stream_quality=["aac_96", "aac_160", "aac_256"],
-            master_url="http://localhost:8000/origin/tracks/1/1/transcoded/master.m3u8",
+            master_url="http://localhost:8000/origin/1/1/transcoded/master.m3u8",
         )
         self.tracks[track.id] = track
 
@@ -114,7 +107,7 @@ class InMemoryStore:
             avatar_url=CDN_IMAGE_URL,
             password="password",
             top_genres=["Синтвейв", "Дрим-поп", "Инди-электроника"],
-            top_artists=["Vulpes Vult", "Kyro", "Luna Wave", "Solaria"],
+            top_artists=[],  # Removed mock artists
         )
         self.users[user.id] = user
 
@@ -151,10 +144,20 @@ class InMemoryStore:
 
     def search_tracks(self, query: str, limit: int) -> List[Track]:
         query_lower = query.lower()
-        matches = [
-            track for track in self.tracks.values() if query_lower in track.title.lower()
-            or query_lower in track.id.lower()
-        ]
+        matches = []
+        for track in self.tracks.values():
+            # Поиск по названию трека
+            if query_lower in track.title.lower():
+                matches.append(track)
+                continue
+            # Поиск по ID трека
+            if query_lower in track.id.lower():
+                matches.append(track)
+                continue
+            # Поиск по имени артиста
+            artist = self.get_artist(track.artist_id)
+            if artist and query_lower in artist.name.lower():
+                matches.append(track)
         return matches[:limit]
 
     # Users
@@ -232,6 +235,16 @@ class InMemoryStore:
 
     def get_artist(self, artist_id: str) -> Optional[Artist]:
         return self.artists.get(artist_id)
+
+    # Playlists
+    def search_playlists(self, query: str, limit: int) -> List[Playlist]:
+        query_lower = query.lower()
+        matches = [
+            playlist for playlist in self.playlists.values()
+            if query_lower in playlist.title.lower()
+            or (playlist.description and query_lower in playlist.description.lower())
+        ]
+        return matches[:limit]
 
     def get_playlist_tracks(self, playlist_id: str) -> List[Track]:
         playlist = self.playlists.get(playlist_id)

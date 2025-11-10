@@ -2,6 +2,7 @@ import axios from 'axios'
 import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 import { routes } from '@shared/router'
 import { appStarted } from '@shared/config/init'
+import { API_CONFIG } from '@shared/config/api'
 
 const seeds = [
   'Новые релизы',
@@ -34,7 +35,7 @@ export const $isHoveringList = createStore(false)
 
 const fetchSuggestionSeedsFx = createEffect(async () => {
   const response = await axios.get<{ items: Array<{ query: string }> }>(
-    'http://localhost:8100/tracks/search/trending'
+    `${API_CONFIG.mockApi}/api/v1/tracks/search/trending`
   )
   return response.data.items.map(item => item.query)
 })

@@ -25,7 +25,7 @@ export const PlaylistCard = ({ playlist, onClick, className }: PlaylistCardProps
           <p className="line-clamp-2 text-sm text-muted-foreground">{playlist.description}</p>
         )}
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {playlist.itemsCount} треков
+          {playlist.itemsCount ?? 0} треков
         </span>
       </div>
     </Card>

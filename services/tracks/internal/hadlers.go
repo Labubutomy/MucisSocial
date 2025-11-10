@@ -21,6 +21,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Public API
 	mux.HandleFunc("/api/tracks", h.handleTracks)
 	mux.HandleFunc("/api/tracks/", h.handleTrack)
+	mux.HandleFunc("/api/tracks/search", h.handleSearchTracks)
 
 	// Admin API
 	mux.HandleFunc("/api/admin/tracks", h.handleAdminTracks)
@@ -56,6 +57,31 @@ func (h *Handler) handleTracks(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"tracks": tracks,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+// GET /api/tracks/search?q=query&limit=20&offset=0 - поиск треков
+func (h *Handler) handleSearchTracks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	tracks, err := h.service.SearchTracks(r.Context(), query, limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"query":  query,
+		"items":  tracks,
 		"limit":  limit,
 		"offset": offset,
 	})

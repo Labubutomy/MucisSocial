@@ -76,7 +76,10 @@ services:
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
       KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     ports:
-      - "8080:8080"
+      - "9080:8080"
+    networks:
+      - music-network
+    restart: unless-stopped
   reverse-proxy:
     image: nginx:1.27-alpine
     depends_on:

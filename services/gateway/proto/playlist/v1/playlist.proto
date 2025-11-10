@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package playlist.v1;
 
-option go_package = "github.com/MucisSocial/api-gateway/proto/playlist/v1;playlistpb";
+option go_package = "github.com/MusicSocial/api-gateway/proto/playlist/v1;playlistpb";
 
 service PlaylistService {
   // Создать плейлист

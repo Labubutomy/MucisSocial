@@ -16,7 +16,7 @@ class TrackCatalogService:
         self._storage = storage
 
     async def get_track(self, track_id: str) -> TrackMetadata:
-        index_key = f"tracks/index/{track_id}.json"
+        index_key = f"index/{track_id}.json"  # Bucket уже называется "tracks"
         try:
             payload = await self._storage.read_text(index_key)
         except ObjectNotFound as exc:

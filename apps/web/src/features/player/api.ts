@@ -1,6 +1,7 @@
 import { createApiClient } from '@shared/api/client'
+import { API_CONFIG } from '@shared/config/api'
 
-const client = createApiClient('http://localhost:8000')
+const client = createApiClient(API_CONFIG.cdn)
 
 interface StreamVariantDto {
   bitrate: number

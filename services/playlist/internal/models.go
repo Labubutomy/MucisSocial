@@ -35,12 +35,14 @@ type PlaylistTrack struct {
 
 // Playlist модель плейлиста
 type Playlist struct {
-	ID        uuid.UUID       `json:"id"`
-	AuthorID  uuid.UUID       `json:"author_id"`
-	Name      string          `json:"name"`
-	Tracks    []PlaylistTrack `json:"tracks,omitempty"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	ID          uuid.UUID       `json:"id"`
+	AuthorID    uuid.UUID       `json:"author_id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	IsPrivate   bool            `json:"is_private"`
+	Tracks      []PlaylistTrack `json:"tracks,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 // PlaylistUser связь пользователя и плейлиста (подписка/лайк)

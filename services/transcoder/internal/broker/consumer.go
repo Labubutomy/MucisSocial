@@ -6,7 +6,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/MucisSocial/transcoder/internal/config"
+	"github.com/MusicSocial/transcoder/internal/config"
 	"github.com/MusicSocial/transcoder/internal/transcoder"
 	"github.com/segmentio/kafka-go"
 )

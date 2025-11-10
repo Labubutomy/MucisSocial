@@ -73,9 +73,11 @@ func (h *Handler) registerUserPlaylistRoutes(api *gin.RouterGroup) {
 }
 
 type CreatePlaylistRequest struct {
-	AuthorID uuid.UUID `json:"author_id" binding:"required"`
-	Name     string    `json:"name" binding:"required"`
-	TrackIDs []string  `json:"track_ids"`
+	AuthorID    uuid.UUID `json:"author_id" binding:"required"`
+	Name        string    `json:"name" binding:"required"`
+	Description string    `json:"description"`
+	IsPrivate   bool      `json:"is_private"`
+	TrackIDs    []string  `json:"track_ids"`
 }
 
 func parseUUIDParam(c *gin.Context, paramName string) (uuid.UUID, error) {
@@ -112,7 +114,7 @@ func (h *Handler) createPlaylist(c *gin.Context) {
 		return
 	}
 
-	playlist, err := h.service.CreatePlaylist(c.Request.Context(), req.AuthorID, req.Name, trackIDs)
+	playlist, err := h.service.CreatePlaylist(c.Request.Context(), req.AuthorID, req.Name, req.Description, req.IsPrivate, trackIDs)
 	if err != nil {
 		handleError(c, err)
 		return

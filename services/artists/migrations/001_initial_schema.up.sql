@@ -33,14 +33,4 @@ CREATE TRIGGER update_artists_updated_at
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
--- Insert some sample data
-INSERT INTO artists (id, name, avatar_url, genres, followers) VALUES 
-    ('550e8400-e29b-41d4-a716-446655440000', 'Aviana', 'https://cdn.example.com/images/artists/aviana.jpg', 
-     ARRAY['Синтвейв', 'Электроника'], 1204300),
-    ('550e8400-e29b-41d4-a716-446655440001', 'Aleo', 'https://cdn.example.com/images/artists/aleo.jpg', 
-     ARRAY['Гиперпоп', 'Инди'], 856420),
-    ('550e8400-e29b-41d4-a716-446655440002', 'Lunaric', 'https://cdn.example.com/images/artists/lunaric.jpg', 
-     ARRAY['Дрим-поп', 'Синтвейв'], 542180),
-    ('550e8400-e29b-41d4-a716-446655440003', 'Shea Monarch', 'https://cdn.example.com/images/artists/shea-monarch.jpg', 
-     ARRAY['Синтвейв', 'Электроника'], 723456)
-ON CONFLICT (id) DO NOTHING;
+-- Sample data removed - use scripts/faker/create_artists_and_tracks.py to populate data

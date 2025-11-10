@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MusicSocial/transcoder/internal/config"
-	"github.com/MusicSocial/transcoder/proto"
+	trackspb "github.com/MusicSocial/transcoder/proto/tracks/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -17,7 +17,7 @@ type Client interface {
 
 type GRPCClient struct {
 	conn   *grpc.ClientConn
-	client proto.TrackServiceClient
+	client trackspb.TracksServiceClient
 }
 
 func NewTrackClient(cfg *config.TrackServiceConfig) (*GRPCClient, error) {
@@ -28,7 +28,7 @@ func NewTrackClient(cfg *config.TrackServiceConfig) (*GRPCClient, error) {
 
 	return &GRPCClient{
 		conn:   conn,
-		client: proto.NewTrackServiceClient(conn),
+		client: trackspb.NewTracksServiceClient(conn),
 	}, nil
 }
 
@@ -36,11 +36,11 @@ func (c *GRPCClient) UpdateTrackInfo(ctx context.Context, trackID, audioURL stri
 	if trackID == "" {
 		return fmt.Errorf("trackID is required")
 	}
-	req := &proto.UpdateTrackInfoRequest{
-		TrackId:  trackID,
-		AudioUrl: audioURL,
-		CoverUrl: coverURL,
-		Duration: duration,
+	req := &trackspb.UpdateTrackInfoRequest{
+		TrackId:     trackID,
+		AudioUrl:    audioURL,
+		CoverUrl:    coverURL,
+		DurationSec: duration, // Используем DurationSec вместо Duration
 	}
 	_, err := c.client.UpdateTrackInfo(ctx, req)
 	if err != nil {

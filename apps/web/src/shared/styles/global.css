@@ -61,12 +61,15 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     scroll-behavior: smooth;
     font-family: 'Montserrat', sans-serif;
+    overflow-x: hidden;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: hidden;
+    width: 100%;
   }
   a:hover {
     text-decoration: underline;
@@ -77,6 +80,7 @@
 @layer components {
   .page-container {
     @apply px-4 md:px-8 w-full max-w-screen-xl mx-auto;
+    box-sizing: border-box;
   }
 }
 

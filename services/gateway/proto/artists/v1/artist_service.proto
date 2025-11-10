@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package artists.v1;
 
-option go_package = "github.com/MucisSocial/api-gateway/proto/artists/v1";
+option go_package = "github.com/MusicSocial/api-gateway/proto/artists/v1";
 
 import "google/protobuf/timestamp.proto";
 

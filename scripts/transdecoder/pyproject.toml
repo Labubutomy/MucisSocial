@@ -1,0 +1,17 @@
+[project]
+name = "transdecoder"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "iizhukov",email = "iizhukov@icloud.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "minio (>=7.2.18,<8.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

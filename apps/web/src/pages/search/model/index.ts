@@ -5,6 +5,7 @@ import { toggleTrackLike } from '@entities/track/api'
 import type { SearchResult } from '@widgets/search'
 import {
   addSearchHistoryEntry,
+  clearSearchHistory,
   fetchSearchHistory,
   fetchSearchResults,
   fetchTrendingQueries,
@@ -25,6 +26,7 @@ export const $query = createStore('')
 const fetchTrendingFx = createEffect(fetchTrendingQueries)
 const fetchHistoryFx = createEffect(fetchSearchHistory)
 const addHistoryFx = createEffect(addSearchHistoryEntry)
+const clearHistoryFx = createEffect(clearSearchHistory)
 const searchFx = createEffect(fetchSearchResults)
 const toggleLikeFx = createEffect(
   async ({ trackId, isLiked }: { trackId: string; isLiked: boolean }) =>
@@ -34,9 +36,9 @@ const toggleLikeFx = createEffect(
 const historyItemAdded = createEvent<SearchHistoryItem>()
 
 export const $history = createStore<SearchHistoryItem[]>([])
-  .on(fetchHistoryFx.doneData, (_, items) => items)
-  .on(historyItemAdded, (history, item) => [item, ...history])
-  .on(historyCleared, () => [])
+  .on(fetchHistoryFx.doneData, (_, items) => items.slice(0, 5))
+  .on(historyItemAdded, (history, item) => [item, ...history].slice(0, 5))
+  .on(clearHistoryFx.done, () => [])
 
 sample({
   clock: addHistoryFx.doneData,
@@ -153,6 +155,16 @@ sample({
   clock: historyItemSelected,
   fn: item => item.query,
   target: [queryChanged, searchFx],
+})
+
+sample({
+  clock: historyCleared,
+  target: clearHistoryFx,
+})
+
+sample({
+  clock: clearHistoryFx.done,
+  target: fetchHistoryFx,
 })
 
 sample({

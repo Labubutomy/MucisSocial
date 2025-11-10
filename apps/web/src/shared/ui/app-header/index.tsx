@@ -3,6 +3,7 @@ import { useUnit } from 'effector-react'
 import { routes } from '@shared/router'
 import { cn } from '@shared/lib/cn'
 import { Avatar } from '@shared/ui/avatar'
+import { $isAuthenticated, $user, signOut } from '@features/auth'
 import {
   $query,
   $showDropdown,
@@ -21,25 +22,43 @@ export const AppHeader = () => {
     query,
     suggestions,
     showDropdown,
+    isAuthenticated,
+    user,
     navigateToHome,
     navigateToProfile,
+    navigateToAuth,
     changeQuery,
     setFocus,
     setHover,
     submitSearch,
     selectSuggestion,
+    handleSignOut,
   } = useUnit({
     query: $query,
     suggestions: $suggestions,
     showDropdown: $showDropdown,
+    isAuthenticated: $isAuthenticated,
+    user: $user,
     navigateToHome: routes.home.navigate,
     navigateToProfile: routes.profile.navigate,
+    navigateToAuth: routes.auth.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
     setHover: hoverChanged,
     submitSearch: searchSubmitted,
     selectSuggestion: suggestionSelected,
+    handleSignOut: signOut,
   })
+
+  // Generate initials from username
+  const getInitials = (username: string | undefined): string => {
+    if (!username) return 'AW'
+    const words = username.trim().split(/\s+/)
+    if (words.length >= 2) {
+      return (words[0][0] + words[words.length - 1][0]).toUpperCase().slice(0, 2)
+    }
+    return username.slice(0, 2).toUpperCase()
+  }
 
   useEffect(
     () => () => {
@@ -73,8 +92,8 @@ export const AppHeader = () => {
   }
 
   return (
-    <div className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="page-container flex items-center gap-4 py-4">
+    <div className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/80 backdrop-blur">
+      <div className="page-container flex items-center gap-2 sm:gap-4 py-4">
         <button
           type="button"
           onClick={() => navigateToHome({ params: {}, query: {} })}
@@ -102,8 +121,8 @@ export const AppHeader = () => {
           <span>Music Social</span>
         </button>
 
-        <form onSubmit={handleSubmit} className="relative flex-1">
-          <div className="flex items-center gap-3 rounded-full border border-border/60 bg-secondary/30 px-5 py-3 transition focus-within:border-primary focus-within:bg-secondary/50">
+        <form onSubmit={handleSubmit} className="relative flex-1 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 rounded-full border border-border/60 bg-secondary/30 px-3 sm:px-5 py-2 sm:py-3 transition focus-within:border-primary focus-within:bg-secondary/50">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -121,7 +140,7 @@ export const AppHeader = () => {
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               placeholder="Поиск по трекам, артистам, плейлистам"
-              className="flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
           </div>
           {showDropdown && (
@@ -147,15 +166,40 @@ export const AppHeader = () => {
             </div>
           )}
         </form>
-        <button
-          type="button"
-          onClick={() => navigateToProfile({ params: {}, query: {} })}
-          className={cn(
-            'flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60'
-          )}
-        >
-          <Avatar fallback="AW" size="sm" />
-        </button>
+        {isAuthenticated ? (
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => navigateToProfile({ params: {}, query: {} })}
+              className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60'
+              )}
+              aria-label="Профиль"
+            >
+              <Avatar
+                src={user?.avatarUrl}
+                alt={user?.username}
+                fallback={getInitials(user?.username)}
+                size="sm"
+              />
+            </button>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap"
+            >
+              Выйти
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigateToAuth({ params: {}, query: {} })}
+            className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
+          >
+            Войти
+          </button>
+        )}
       </div>
     </div>
   )

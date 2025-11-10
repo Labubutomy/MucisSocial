@@ -36,8 +36,8 @@ class StreamingService:
         return StreamResponse(master_url=urls.master_url, variants=urls.variants, expires_in=urls.expires_in)
 
     def _generate_urls(self, track_id: str, artist_id: str, bitrates: tuple[int, ...]) -> StreamUrls:
-        # Структура MinIO: tracks/{artist_id}/{track_id}/transcoded/...
-        base_path = f"/tracks/{artist_id}/{track_id}/transcoded"
+        # Структура MinIO: {artist_id}/{track_id}/transcoded/... (bucket уже называется "tracks")
+        base_path = f"/{artist_id}/{track_id}/transcoded"
 
         # Используем base_url или cdn_base_url если указан
         service_base_url = self._settings.cdn_base_url or self._settings.base_url

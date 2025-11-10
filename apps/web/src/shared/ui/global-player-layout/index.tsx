@@ -26,13 +26,16 @@ export const GlobalPlayerLayout = ({
     >
       <AppHeader />
       <main
-        className={cn('flex-1 w-full pb-24 pt-8 md:pb-32', isMiniPlayerVisible ? 'md:pb-48' : '')}
+        className={cn(
+          'flex-1 w-full pt-8',
+          isMiniPlayerVisible ? 'pb-32 sm:pb-36 md:pb-48' : 'pb-24 md:pb-32'
+        )}
       >
         {children}
       </main>
 
       {miniPlayer && isMiniPlayerVisible && (
-        <div className="pointer-events-none sticky bottom-0 z-40 w-full px-4 pb-6">
+        <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 w-full px-4 pb-4 sm:pb-6">
           <div className="page-container">
             <div className="pointer-events-auto">{miniPlayer}</div>
           </div>

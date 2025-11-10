@@ -1,8 +1,8 @@
 services:
   upload:
     build:
-      context: ./upload
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./upload/Dockerfile
     container_name: upload-service
     environment:
       - GRPC_PORT=50051
@@ -12,9 +12,9 @@ services:
       - MINIO_BUCKET=tracks
       - REDPANDA_BROKERS=redpanda:9092
       - TRANSCODER_TOPIC=transcoder-tasks
-      - TRACK_SERVICE_ADDR=tracks:50052
+      - TRACK_SERVICE_ADDR=tracks-service:50053
     ports:
-      - "50051:50051"
+      - "50055:50051"
     networks:
       - music-network
     depends_on:
@@ -22,12 +22,14 @@ services:
         condition: service_healthy
       redpanda:
         condition: service_healthy
+      tracks-service:
+        condition: service_healthy
     restart: unless-stopped
 
   transcoder:
     build:
-      context: ./transcoder
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./transcoder/Dockerfile
     container_name: transcoder-service
     environment:
       - KAFKA_BROKERS=redpanda:9092
@@ -37,7 +39,7 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=tracks
-      - TRACK_SERVICE_ADDR=tracks:50052
+      - TRACK_SERVICE_ADDR=tracks-service:50053
       - TRANSCODER_WORKDIR=/tmp/transcoder
       - FFMPEG_PATH=ffmpeg
       - FFPROBE_PATH=ffprobe
@@ -49,6 +51,8 @@ services:
       minio:
         condition: service_healthy
       redpanda:
+        condition: service_healthy
+      tracks-service:
         condition: service_healthy
     restart: unless-stopped
 
@@ -324,6 +328,7 @@ services:
       - artists-service
       - tracks-service
       - playlist-service
+      - upload
     networks:
       - music-network
     restart: unless-stopped
@@ -332,7 +337,7 @@ services:
       - JWT_SECRET=your-super-secret-access-key-change-in-production
       - USERS_SERVICE_URL=users-service:50051
       - ARTISTS_SERVICE_URL=artists-service:50052
-      - TRACKS_SERVICE_URL=tracks-service:50053
+      - TRACKS_SERVICE_URL=http://tracks-service:8080
       - PLAYLIST_SERVICE_URL=playlist-service:50054
 
 volumes:
