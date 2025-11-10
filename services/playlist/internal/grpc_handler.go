@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"time"
 
 	pb "github.com/Labubutomy/MucisSocial/services/playlist/api"
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ func (h *GRPCHandler) CreatePlaylist(ctx context.Context, req *pb.CreatePlaylist
 	}
 
 	// Пока создаем плейлист без треков
-	playlist, err := h.service.CreatePlaylist(ctx, userID, req.Name, []uuid.UUID{})
+	playlist, err := h.service.CreatePlaylist(ctx, userID, req.Name, req.Description, req.IsPrivate, []uuid.UUID{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create playlist: %v", err)
 	}
@@ -40,8 +41,31 @@ func (h *GRPCHandler) CreatePlaylist(ctx context.Context, req *pb.CreatePlaylist
 
 // GetPlaylist получает плейлист по ID
 func (h *GRPCHandler) GetPlaylist(ctx context.Context, req *pb.GetPlaylistRequest) (*pb.GetPlaylistResponse, error) {
-	// TODO: Нужно добавить метод GetPlaylistByID в Service
-	return nil, status.Errorf(codes.Unimplemented, "method not implemented yet")
+	playlistID, err := uuid.Parse(req.PlaylistId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid playlist ID: %v", err)
+	}
+
+	playlist, err := h.service.GetPlaylistByID(ctx, playlistID)
+	if err != nil {
+		if err == ErrNotFound {
+			return nil, status.Errorf(codes.NotFound, "playlist not found")
+		}
+		return nil, status.Errorf(codes.Internal, "failed to get playlist: %v", err)
+	}
+
+	return &pb.GetPlaylistResponse{
+		Playlist: &pb.Playlist{
+			Id:          playlist.ID.String(),
+			UserId:      playlist.AuthorID.String(),
+			Name:        playlist.Name,
+			Description: playlist.Description,
+			IsPrivate:   playlist.IsPrivate,
+			CreatedAt:   playlist.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   playlist.UpdatedAt.Format(time.RFC3339),
+			TracksCount: int32(len(playlist.Tracks)),
+		},
+	}, nil
 }
 
 // UpdatePlaylist обновляет плейлист
@@ -79,16 +103,17 @@ func (h *GRPCHandler) GetUserPlaylists(ctx context.Context, req *pb.GetUserPlayl
 		return nil, status.Errorf(codes.Internal, "failed to get user playlists: %v", err)
 	}
 
-	var apiPlaylists []*pb.Playlist
+	// Инициализируем как пустой слайс, чтобы избежать nil
+	apiPlaylists := make([]*pb.Playlist, 0, len(playlists))
 	for _, playlist := range playlists {
 		apiPlaylists = append(apiPlaylists, &pb.Playlist{
 			Id:          playlist.ID.String(),
 			UserId:      playlist.AuthorID.String(),
 			Name:        playlist.Name,
-			Description: "",    // TODO: добавить Description в модель
-			IsPrivate:   false, // TODO: добавить IsPrivate в модель
-			CreatedAt:   playlist.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt:   playlist.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			Description: playlist.Description,
+			IsPrivate:   playlist.IsPrivate,
+			CreatedAt:   playlist.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   playlist.UpdatedAt.Format(time.RFC3339),
 			TracksCount: int32(len(playlist.Tracks)),
 		})
 	}
@@ -101,8 +126,27 @@ func (h *GRPCHandler) GetUserPlaylists(ctx context.Context, req *pb.GetUserPlayl
 
 // AddTrackToPlaylist добавляет трек в плейлист
 func (h *GRPCHandler) AddTrackToPlaylist(ctx context.Context, req *pb.AddTrackToPlaylistRequest) (*pb.AddTrackToPlaylistResponse, error) {
-	// TODO: Нужно добавить метод AddTrackToPlaylist в Service
-	return nil, status.Errorf(codes.Unimplemented, "method not implemented yet")
+	playlistID, err := uuid.Parse(req.PlaylistId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid playlist ID: %v", err)
+	}
+
+	trackID, err := uuid.Parse(req.TrackId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid track ID: %v", err)
+	}
+
+	err = h.service.AddTrackToPlaylist(ctx, playlistID, trackID)
+	if err != nil {
+		if err == ErrNotFound {
+			return nil, status.Errorf(codes.NotFound, "playlist or track not found: %v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to add track to playlist: %v", err)
+	}
+
+	return &pb.AddTrackToPlaylistResponse{
+		Success: true,
+	}, nil
 }
 
 // RemoveTrackFromPlaylist удаляет трек из плейлиста

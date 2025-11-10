@@ -41,9 +41,10 @@ func (h *GRPCHandler) CreateTrack(ctx context.Context, req *tracks.CreateTrackRe
 	// Создаем трек через сервис
 	track, err := h.service.CreateTrackGRPC(ctx, req.Title, artistIDs, req.Genre)
 	if err != nil {
-		if err == ErrNotFound {
-			return nil, status.Error(codes.NotFound, "one or more artists not found")
-		}
+		// Закомментировано: tracks-service не должен проверять артистов
+		// if err == ErrNotFound {
+		// 	return nil, status.Error(codes.NotFound, "one or more artists not found")
+		// }
 		if err == ErrBadRequest {
 			return nil, status.Error(codes.InvalidArgument, "invalid request")
 		}

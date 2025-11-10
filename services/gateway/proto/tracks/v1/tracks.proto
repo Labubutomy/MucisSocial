@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tracks.v1;
 
-option go_package = "github.com/MucisSocial/api-gateway/proto/tracks/v1;trackspb";
+option go_package = "github.com/MusicSocial/api-gateway/proto/tracks/v1;trackspb";
 
 service TracksService {
   // Создать трек

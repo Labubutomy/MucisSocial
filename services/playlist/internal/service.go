@@ -16,17 +16,19 @@ func NewService(repo *Repository) *Service {
 }
 
 // CreatePlaylist создать плейлист
-func (s *Service) CreatePlaylist(ctx context.Context, authorID uuid.UUID, name string, trackIDs []uuid.UUID) (*Playlist, error) {
+func (s *Service) CreatePlaylist(ctx context.Context, authorID uuid.UUID, name, description string, isPrivate bool, trackIDs []uuid.UUID) (*Playlist, error) {
 	if name == "" {
 		return nil, ErrBadRequest
 	}
 
 	playlist := &Playlist{
-		ID:        uuid.New(),
-		AuthorID:  authorID,
-		Name:      name,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:          uuid.New(),
+		AuthorID:    authorID,
+		Name:        name,
+		Description: description,
+		IsPrivate:   isPrivate,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	// Преобразуем trackIDs в PlaylistTrack структуры
@@ -49,6 +51,26 @@ func (s *Service) CreatePlaylist(ctx context.Context, authorID uuid.UUID, name s
 // DeletePlaylist удалить плейлист
 func (s *Service) DeletePlaylist(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// AddTrackToPlaylist добавить трек в плейлист
+func (s *Service) AddTrackToPlaylist(ctx context.Context, playlistID, trackID uuid.UUID) error {
+	// Проверяем существование плейлиста
+	_, err := s.repo.GetByID(ctx, playlistID)
+	if err != nil {
+		return err
+	}
+	
+	// Получаем текущие треки плейлиста для определения позиции
+	tracks, err := s.repo.GetPlaylistTracks(ctx, playlistID)
+	if err != nil {
+		return err
+	}
+	
+	// Позиция нового трека - в конец списка
+	position := len(tracks)
+	
+	return s.repo.AddTrackToPlaylist(ctx, playlistID, trackID, position)
 }
 
 // RemoveTrackFromPlaylist удалить трек из плейлиста
@@ -90,6 +112,11 @@ func (s *Service) GetPlaylistTracks(ctx context.Context, playlistID uuid.UUID) (
 		return nil, err
 	}
 	return s.repo.GetPlaylistTracks(ctx, playlistID)
+}
+
+// GetPlaylistByID получить плейлист по ID
+func (s *Service) GetPlaylistByID(ctx context.Context, playlistID uuid.UUID) (*Playlist, error) {
+	return s.repo.GetByID(ctx, playlistID)
 }
 
 // получить автора плейлиста

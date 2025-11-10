@@ -20,12 +20,12 @@ func NewRepository(db *sql.DB) *Repository {
 // получить плейлист по ID
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Playlist, error) {
 	query := `
-        SELECT id, author_id, name, created_at, updated_at
+        SELECT id, author_id, name, COALESCE(description, ''), COALESCE(is_private, false), created_at, updated_at
         FROM playlists WHERE id = $1
     `
 	playlist := &Playlist{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&playlist.ID, &playlist.AuthorID, &playlist.Name,
+		&playlist.ID, &playlist.AuthorID, &playlist.Name, &playlist.Description, &playlist.IsPrivate,
 		&playlist.CreatedAt, &playlist.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -48,7 +48,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*Playlist, erro
 // получить список плейлистов
 func (r *Repository) List(ctx context.Context, limit, offset int, authorID *uuid.UUID) ([]*Playlist, error) {
 	query := `
-        SELECT id, author_id, name, created_at, updated_at
+        SELECT id, author_id, name, COALESCE(description, ''), COALESCE(is_private, false), created_at, updated_at
         FROM playlists
     `
 	args := []interface{}{}
@@ -74,7 +74,7 @@ func (r *Repository) List(ctx context.Context, limit, offset int, authorID *uuid
 	for rows.Next() {
 		playlist := &Playlist{}
 		err := rows.Scan(
-			&playlist.ID, &playlist.AuthorID, &playlist.Name,
+			&playlist.ID, &playlist.AuthorID, &playlist.Name, &playlist.Description, &playlist.IsPrivate,
 			&playlist.CreatedAt, &playlist.UpdatedAt,
 		)
 		if err != nil {
@@ -101,11 +101,11 @@ func (r *Repository) List(ctx context.Context, limit, offset int, authorID *uuid
 // создать плейлист
 func (r *Repository) Create(ctx context.Context, playlist *Playlist) error {
 	query := `
-        INSERT INTO playlists (id, author_id, name, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO playlists (id, author_id, name, description, is_private, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
     `
 	_, err := r.db.ExecContext(ctx, query,
-		playlist.ID, playlist.AuthorID, playlist.Name,
+		playlist.ID, playlist.AuthorID, playlist.Name, playlist.Description, playlist.IsPrivate,
 		playlist.CreatedAt, playlist.UpdatedAt,
 	)
 	if err != nil {
@@ -186,23 +186,14 @@ func (r *Repository) GetPlaylistTracks(ctx context.Context, playlistID uuid.UUID
 	return tracks, nil
 }
 
-// загружает базовую информацию о треках из playlist_tracks и tracks
+// загружает базовую информацию о треках из playlist_tracks
+// Примечание: полная информация о треках должна получаться через tracks-service API
 func (r *Repository) loadTracksBase(ctx context.Context, playlistID uuid.UUID) ([]PlaylistTrack, error) {
 	query := `
         SELECT 
             pt.track_id,
-            pt.position,
-            t.id,
-            t.title,
-            t.genre,
-            t.audio_url,
-            t.cover_url,
-            t.duration_seconds,
-            t.status,
-            t.created_at,
-            t.updated_at
+            pt.position
         FROM playlist_tracks pt
-        INNER JOIN tracks t ON pt.track_id = t.id
         WHERE pt.playlist_id = $1
         ORDER BY pt.position, pt.added_at
     `
@@ -216,140 +207,40 @@ func (r *Repository) loadTracksBase(ctx context.Context, playlistID uuid.UUID) (
 
 	for rows.Next() {
 		var track PlaylistTrack
-		var trackID uuid.UUID
 
 		if err := rows.Scan(
-			&trackID,               // pt.track_id
-			&track.Position,        // pt.position
-			&track.Track.ID,        // t.id
-			&track.Track.Title,     // t.title
-			&track.Track.Genre,     // t.genre
-			&track.Track.AudioURL,  // t.audio_url
-			&track.Track.CoverURL,  // t.cover_url
-			&track.Track.Duration,  // t.duration_seconds
-			&track.Track.Status,    // t.status
-			&track.Track.CreatedAt, // t.created_at
-			&track.Track.UpdatedAt, // t.updated_at
+			&track.Track.ID,  // pt.track_id
+			&track.Position,  // pt.position
 		); err != nil {
 			return nil, err
 		}
 
-		// Инициализируем массивы
+		// Инициализируем массивы и устанавливаем значения по умолчанию
 		track.Track.Artists = make([]Artist, 0)
+		track.Track.Status = "active" // Значение по умолчанию
 		tracks = append(tracks, track)
 	}
 
 	return tracks, nil
 }
 
-// загружает артистов для треков (с именами из таблицы artists)
+// загружает артистов для треков
+// Примечание: информация об артистах должна получаться через tracks-service API
+// Эта функция оставлена для совместимости, но не выполняет запросов к БД
 func (r *Repository) loadTracksArtists(ctx context.Context, tracks []PlaylistTrack) error {
-	if len(tracks) == 0 {
-		return nil
-	}
-
-	// Создаем map для быстрого доступа к трекам по ID
-	trackMap := make(map[uuid.UUID]*PlaylistTrack)
-	trackIDs := make([]uuid.UUID, 0, len(tracks))
-	for i := range tracks {
-		trackMap[tracks[i].Track.ID] = &tracks[i]
-		trackIDs = append(trackIDs, tracks[i].Track.ID)
-	}
-
-	// Загружаем артистов с именами из таблицы artists через JOIN с track_artists
-	artistsQuery := `
-        SELECT 
-            ta.track_id,
-            a.id,
-            a.name
-        FROM track_artists ta
-        INNER JOIN artists a ON ta.artist_id = a.id
-        WHERE ta.track_id IN (`
-	args := make([]interface{}, len(trackIDs))
-	for i, id := range trackIDs {
-		if i > 0 {
-			artistsQuery += ", "
-		}
-		artistsQuery += fmt.Sprintf("$%d", i+1)
-		args[i] = id
-	}
-	artistsQuery += ") ORDER BY ta.track_id"
-
-	artistRows, err := r.db.QueryContext(ctx, artistsQuery, args...)
-	if err != nil {
-		return err
-	}
-	defer artistRows.Close()
-
-	// Заполняем массив Artists для каждого трека
-	for artistRows.Next() {
-		var trackID uuid.UUID
-		var artist Artist
-		if err := artistRows.Scan(&trackID, &artist.ID, &artist.Name); err != nil {
-			return err
-		}
-		// Находим трек и добавляем артиста с именем
-		if track, ok := trackMap[trackID]; ok {
-			track.Track.Artists = append(track.Track.Artists, artist)
-		}
-	}
-
+	// В микросервисной архитектуре информация об артистах должна получаться
+	// через API tracks-service, а не из локальной БД playlist-service
+	// Оставляем функцию пустой, так как Artists уже инициализирован как пустой массив
 	return nil
 }
 
-// loadTracksArtistsByPointers загружает артистов для треков через указатели (с именами из таблицы artists)
+// loadTracksArtistsByPointers загружает артистов для треков через указатели
+// Примечание: информация об артистах должна получаться через tracks-service API
+// Эта функция оставлена для совместимости, но не выполняет запросов к БД
 func (r *Repository) loadTracksArtistsByPointers(ctx context.Context, tracks []*PlaylistTrack) error {
-	if len(tracks) == 0 {
-		return nil
-	}
-
-	// Создаем map для быстрого доступа к трекам по ID
-	trackMap := make(map[uuid.UUID]*PlaylistTrack)
-	trackIDs := make([]uuid.UUID, 0, len(tracks))
-	for _, track := range tracks {
-		trackMap[track.Track.ID] = track
-		trackIDs = append(trackIDs, track.Track.ID)
-	}
-
-	// Загружаем артистов с именами из таблицы artists через JOIN с track_artists
-	artistsQuery := `
-        SELECT 
-            ta.track_id,
-            a.id,
-            a.name
-        FROM track_artists ta
-        INNER JOIN artists a ON ta.artist_id = a.id
-        WHERE ta.track_id IN (`
-	args := make([]interface{}, len(trackIDs))
-	for i, id := range trackIDs {
-		if i > 0 {
-			artistsQuery += ", "
-		}
-		artistsQuery += fmt.Sprintf("$%d", i+1)
-		args[i] = id
-	}
-	artistsQuery += ") ORDER BY ta.track_id"
-
-	artistRows, err := r.db.QueryContext(ctx, artistsQuery, args...)
-	if err != nil {
-		return err
-	}
-	defer artistRows.Close()
-
-	// Заполняем массив Artists для каждого трека с именами артистов
-	for artistRows.Next() {
-		var trackID uuid.UUID
-		var artist Artist
-		// Сканируем track_id, artist.id и artist.name из таблицы artists
-		if err := artistRows.Scan(&trackID, &artist.ID, &artist.Name); err != nil {
-			return err
-		}
-		// Находим трек и добавляем артиста с ID и именем
-		if track, ok := trackMap[trackID]; ok {
-			track.Track.Artists = append(track.Track.Artists, artist)
-		}
-	}
-
+	// В микросервисной архитектуре информация об артистах должна получаться
+	// через API tracks-service, а не из локальной БД playlist-service
+	// Оставляем функцию пустой, так как Artists уже инициализирован как пустой массив
 	return nil
 }
 
@@ -359,23 +250,14 @@ func (r *Repository) GetPlaylistsTracks(ctx context.Context, playlistIDs []uuid.
 		return make(map[uuid.UUID][]PlaylistTrack), nil
 	}
 
-	// Загружаем базовую информацию о треках
+	// Загружаем базовую информацию о треках из playlist_tracks
+	// Примечание: полная информация о треках должна получаться через tracks-service API
 	query := `
         SELECT 
             pt.playlist_id,
             pt.track_id,
-            pt.position,
-            t.id,
-            t.title,
-            t.genre,
-            t.audio_url,
-            t.cover_url,
-            t.duration_seconds,
-            t.status,
-            t.created_at,
-            t.updated_at
+            pt.position
         FROM playlist_tracks pt
-        INNER JOIN tracks t ON pt.track_id = t.id
         WHERE pt.playlist_id IN (`
 	args := make([]interface{}, len(playlistIDs))
 	for i, id := range playlistIDs {
@@ -399,26 +281,19 @@ func (r *Repository) GetPlaylistsTracks(ctx context.Context, playlistIDs []uuid.
 	for rows.Next() {
 		var playlistID uuid.UUID
 		track := &PlaylistTrack{}
-		var trackID uuid.UUID
 
 		if err := rows.Scan(
-			&playlistID,            // pt.playlist_id
-			&trackID,               // pt.track_id
-			&track.Position,        // pt.position
-			&track.Track.ID,        // t.id
-			&track.Track.Title,     // t.title
-			&track.Track.Genre,     // t.genre
-			&track.Track.AudioURL,  // t.audio_url
-			&track.Track.CoverURL,  // t.cover_url
-			&track.Track.Duration,  // t.duration_seconds
-			&track.Track.Status,    // t.status
-			&track.Track.CreatedAt, // t.created_at
-			&track.Track.UpdatedAt, // t.updated_at
+			&playlistID,         // pt.playlist_id
+			&track.Track.ID,     // pt.track_id
+			&track.Position,     // pt.position
 		); err != nil {
 			return nil, err
 		}
 
+		// Инициализируем массивы и устанавливаем значения по умолчанию
 		track.Track.Artists = make([]Artist, 0)
+		track.Track.Status = "active" // Значение по умолчанию
+		
 		if tracksMap[playlistID] == nil {
 			tracksMap[playlistID] = make([]*PlaylistTrack, 0)
 		}
@@ -528,14 +403,27 @@ func (r *Repository) UnsubscribeUser(ctx context.Context, userID, playlistID uui
 	return nil
 }
 
-// получить плейлисты пользователя (подписки)
+// получить плейлисты пользователя (созданные пользователем + подписки)
 func (r *Repository) GetUserPlaylists(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Playlist, error) {
+	// Возвращаем плейлисты, которые пользователь создал (author_id = user_id)
+	// ИЛИ на которые пользователь подписан (через playlist_users)
+	// Также подсчитываем количество треков для каждого плейлиста
 	query := `
-        SELECT p.id, p.author_id, p.name, p.created_at, p.updated_at
+        SELECT DISTINCT 
+            p.id, 
+            p.author_id, 
+            p.name, 
+            COALESCE(p.description, ''), 
+            COALESCE(p.is_private, false), 
+            p.created_at, 
+            p.updated_at,
+            COALESCE(COUNT(pt.track_id), 0) as tracks_count
         FROM playlists p
-        INNER JOIN playlist_users pu ON p.id = pu.playlist_id
-        WHERE pu.user_id = $1
-        ORDER BY pu.created_at DESC
+        LEFT JOIN playlist_users pu ON p.id = pu.playlist_id AND pu.user_id = $1
+        LEFT JOIN playlist_tracks pt ON p.id = pt.playlist_id
+        WHERE p.author_id = $1 OR pu.user_id = $1
+        GROUP BY p.id, p.author_id, p.name, p.description, p.is_private, p.created_at, p.updated_at
+        ORDER BY p.created_at DESC
         LIMIT $2 OFFSET $3
     `
 	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
@@ -544,16 +432,20 @@ func (r *Repository) GetUserPlaylists(ctx context.Context, userID uuid.UUID, lim
 	}
 	defer rows.Close()
 
-	var playlists []*Playlist
+	// Инициализируем как пустой слайс, чтобы избежать nil
+	playlists := make([]*Playlist, 0)
 	for rows.Next() {
 		playlist := &Playlist{}
+		var tracksCount int
 		err := rows.Scan(
-			&playlist.ID, &playlist.AuthorID, &playlist.Name,
-			&playlist.CreatedAt, &playlist.UpdatedAt,
+			&playlist.ID, &playlist.AuthorID, &playlist.Name, &playlist.Description, &playlist.IsPrivate,
+			&playlist.CreatedAt, &playlist.UpdatedAt, &tracksCount,
 		)
 		if err != nil {
 			return nil, err
 		}
+		// Инициализируем Tracks с правильным размером для корректного подсчета
+		playlist.Tracks = make([]PlaylistTrack, tracksCount)
 		playlists = append(playlists, playlist)
 	}
 	return playlists, nil

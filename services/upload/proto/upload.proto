@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package upload;
 
-option go_package = "github.com/MucisSocial/upload/proto";
+option go_package = "github.com/MusicSocial/upload/proto";
 
 service UploadService {
   rpc UploadTrack(stream UploadTrackRequest) returns (UploadTrackResponse);

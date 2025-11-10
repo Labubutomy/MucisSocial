@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package track;
 
-option go_package = "github.com/MucisSocial/upload/proto";
+option go_package = "github.com/MusicSocial/upload/proto";
 
 message CreateTrackRequest {
   string name = 1;

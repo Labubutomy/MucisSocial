@@ -31,35 +31,33 @@ func (s *Service) ListTracks(ctx context.Context, limit, offset int, artistID *u
 	return s.repo.List(ctx, limit, offset, artistID)
 }
 
-// validateAndGetArtists валидирует и получает артистов из БД
-func (s *Service) validateAndGetArtists(ctx context.Context, artistIDs []uuid.UUID) ([]Artist, error) {
-	if len(artistIDs) == 0 {
-		return nil, ErrBadRequest
+// SearchTracks поиск треков по названию
+func (s *Service) SearchTracks(ctx context.Context, query string, limit, offset int) ([]*Track, error) {
+	if query == "" {
+		return s.ListTracks(ctx, limit, offset, nil)
 	}
-
-	artists, err := s.repo.GetArtists(ctx, artistIDs)
-	if err != nil {
-		return nil, err
+	if limit <= 0 || limit > 100 {
+		limit = 20
 	}
-
-	if !validateArtists(artists, artistIDs) {
-		return nil, ErrNotFound
+	if offset < 0 {
+		offset = 0
 	}
-
-	return artists, nil
+	return s.repo.Search(ctx, query, limit, offset)
 }
+
 
 // CreateTrack создать трек (admin) - принимает массив artist_ids
 func (s *Service) CreateTrack(ctx context.Context, title string, artistIDs []uuid.UUID, genre string) (*Track, error) {
-	artists, err := s.validateAndGetArtists(ctx, artistIDs)
-	if err != nil {
-		return nil, err
-	}
+	// Закомментировано: tracks-service не должен хранить артистов локально
+	// artists, err := s.validateAndGetArtists(ctx, artistIDs)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	track := &Track{
 		ID:        uuid.New(),
 		Title:     title,
-		Artists:   artists,
+		ArtistIDs: artistIDs, // Сохраняем только ID артистов
 		Genre:     genre,
 		Status:    StatusUploaded,
 		CreatedAt: time.Now(),
@@ -70,15 +68,10 @@ func (s *Service) CreateTrack(ctx context.Context, title string, artistIDs []uui
 
 // CreateTrackGRPC создать трек через gRPC (принимает массив artist_ids)
 func (s *Service) CreateTrackGRPC(ctx context.Context, title string, artistIDs []uuid.UUID, genre string) (*Track, error) {
-	artists, err := s.validateAndGetArtists(ctx, artistIDs)
-	if err != nil {
-		return nil, err
-	}
-
 	track := &Track{
 		ID:        uuid.New(),
 		Title:     title,
-		Artists:   artists,
+		ArtistIDs: artistIDs, // Сохраняем только ID артистов
 		Genre:     genre,
 		Status:    StatusUploaded,
 		CreatedAt: time.Now(),
@@ -98,11 +91,7 @@ func (s *Service) UpdateTrack(ctx context.Context, id uuid.UUID, title string, a
 		track.Title = title
 	}
 	if len(artistIDs) > 0 {
-		artists, err := s.validateAndGetArtists(ctx, artistIDs)
-		if err != nil {
-			return err
-		}
-		track.Artists = artists
+		track.ArtistIDs = artistIDs // Обновляем только ID артистов
 	}
 	if genre != "" {
 		track.Genre = genre
