@@ -7,7 +7,7 @@ import type { PlaylistSummary } from '@entities/playlist'
 
 import { API_CONFIG } from '@shared/config/api'
 
-// Use gateway for artists/search and me/search-history, mock-api for tracks
+// Use gateway for artists/search, tracks/search and me/search-history, mock-api for playlists
 const gatewayClient = createApiClient(API_CONFIG.gateway)
 const mockClient = createApiClient(API_CONFIG.mockApi)
 
@@ -19,26 +19,19 @@ interface HistoryResponse {
   items: SearchHistoryItem[]
 }
 
-interface TrackSearchResponse {
+// Gateway track search response format
+interface GatewayTrackSearchResponse {
   query: string
   items: Array<{
-    type: 'track'
-    data: {
-      id: string
-      title: string
-      durationSec: number
-      coverUrl: string
-      artist: {
-        id: string
-        name: string
-      }
-      isLiked?: boolean
-      stream?: {
-        quality?: string[]
-        hlsMasterUrl?: string
-      }
-    }
+    id: string
+    title: string
+    duration_seconds: number
+    cover_url: string
+    artist_ids: string[] // Массив ID артистов
+    genre?: string
   }>
+  limit: number
+  offset: number
 }
 
 interface ArtistSearchResponse {
@@ -63,21 +56,20 @@ interface PlaylistsResponse {
   }>
 }
 
-const mapTrack = (item: TrackSearchResponse['items'][number]): SearchResult => ({
+// Map gateway track to SearchResult
+const mapGatewayTrack = (item: GatewayTrackSearchResponse['items'][number]): SearchResult => ({
   type: 'track',
   data: {
-    id: item.data.id,
-    title: item.data.title,
-    artist: item.data.artist,
-    coverUrl: item.data.coverUrl,
-    duration: item.data.durationSec,
-    liked: item.data.isLiked ?? false,
-    stream: item.data.stream?.hlsMasterUrl
-      ? {
-          masterUrl: item.data.stream.hlsMasterUrl,
-          qualities: item.data.stream.quality ?? [],
-        }
-      : undefined,
+    id: item.id,
+    title: item.title,
+    artist:
+      item.artist_ids && item.artist_ids.length > 0
+        ? { id: item.artist_ids[0], name: 'Unknown' } // Имя будет получено отдельно при необходимости
+        : { id: '', name: 'Unknown' },
+    coverUrl: item.cover_url || '',
+    duration: item.duration_seconds,
+    liked: false, // Gateway doesn't provide like status
+    stream: undefined, // Gateway doesn't provide stream info
   } satisfies Track,
 })
 
@@ -133,8 +125,8 @@ export const clearSearchHistory = async () => {
 export const fetchSearchResults = async (query: string) => {
   // Execute all search requests in parallel, but handle errors gracefully
   const results = await Promise.allSettled([
-    mockClient
-      .get<TrackSearchResponse>('/api/v1/tracks/search', {
+    gatewayClient
+      .get<GatewayTrackSearchResponse>('/api/v1/tracks/search', {
         params: { q: query, limit: 20 },
       })
       .catch(() => null),
@@ -153,7 +145,7 @@ export const fetchSearchResults = async (query: string) => {
   // Process tracks response (ignore if failed)
   let trackResults: SearchResult[] = []
   if (results[0].status === 'fulfilled' && results[0].value?.data) {
-    trackResults = (results[0].value.data.items || []).map(mapTrack)
+    trackResults = (results[0].value.data.items || []).map(mapGatewayTrack)
   }
 
   // Process artists response (ignore if failed)

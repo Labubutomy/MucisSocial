@@ -10,8 +10,8 @@ const fetchTrackDetailFx = createEffect(async ({ trackId }: { trackId: string })
   return fetchTrackDetail(trackId)
 })
 
-const fetchRecommendationsFx = createEffect(async ({ trackId }: { trackId: string }) => {
-  return fetchTrackRecommendations(trackId)
+const fetchRecommendationsFx = createEffect(async () => {
+  return fetchTrackRecommendations()
 })
 
 const toggleLikeFx = createEffect(
@@ -65,10 +65,16 @@ export const $recommendedTracks = combine($recommendedBase, $likes, (tracks, lik
   )
 )
 
+// Обновляем трек при открытии маршрута или изменении параметра trackId
+sample({
+  clock: [routes.track.opened, routes.track.updated],
+  fn: ({ params }) => ({ trackId: params.trackId }),
+  target: fetchTrackDetailFx,
+})
+
 sample({
   clock: routes.track.opened,
-  fn: ({ params }) => ({ trackId: params.trackId }),
-  target: [fetchTrackDetailFx, fetchRecommendationsFx],
+  target: fetchRecommendationsFx,
 })
 
 sample({

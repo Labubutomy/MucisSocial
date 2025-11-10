@@ -76,10 +76,14 @@ export const TrackPage = () => {
   }
 
   const handleOpen = (track: Track) => {
-    navigateToTrack({
-      params: { trackId: track.id },
-      query: {},
-    })
+    // Если это другой трек, навигируем к нему (страница обновится автоматически)
+    // Если это тот же трек, ничего не делаем
+    if (track.id !== trackParams?.trackId) {
+      navigateToTrack({
+        params: { trackId: track.id },
+        query: {},
+      })
+    }
   }
 
   const handleSeek = (seconds: number) => {
