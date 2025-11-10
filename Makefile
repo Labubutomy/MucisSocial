@@ -3,11 +3,11 @@
 dev:
 	docker compose up -d --build
 
-dev-up: dev-build
+dev-up:
 	docker compose up -d
 
 dev-down:
-	docker compose -f down
+	docker compose down
 
 
 apps:
@@ -18,6 +18,7 @@ apps-up:
 
 apps-down:
 	docker compose -f apps/docker-compose.yml down
+
 
 infra:
 	docker compose -f infrastructure/docker-compose.yml up -d --build
