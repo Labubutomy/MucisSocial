@@ -91,7 +91,7 @@ func main() {
 	defer playlistConn.Close()
 
 	// Connect to upload gRPC service
-	uploadConn, err := grpc.Dial("upload-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	uploadConn, err := grpc.Dial("upload-service:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to upload gRPC service: %v", err)
 	}
@@ -191,7 +191,7 @@ func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {
 		}
 
 		var tokenString string
-		
+
 		// Поддерживаем оба формата: "Bearer <token>" и "Bearer: <token>"
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
@@ -728,9 +728,9 @@ func (g *Gateway) createArtistHandler(w http.ResponseWriter, r *http.Request) {
 	const defaultAvatarURL = "https://mir-s3-cdn-cf.behance.net/projects/202/e2ba0e187042211.Y3JvcCw4MDgsNjMyLDAsMA.png"
 
 	var req struct {
-		Name     string   `json:"name"`
-		AvatarURL string  `json:"avatar_url"`
-		Genres   []string `json:"genres"`
+		Name      string   `json:"name"`
+		AvatarURL string   `json:"avatar_url"`
+		Genres    []string `json:"genres"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -750,9 +750,9 @@ func (g *Gateway) createArtistHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	grpcReq := &artistpb.CreateArtistRequest{
-		Name:     req.Name,
+		Name:      req.Name,
 		AvatarUrl: avatarURL,
-		Genres:   req.Genres,
+		Genres:    req.Genres,
 	}
 
 	resp, err := g.artistClient.CreateArtist(r.Context(), grpcReq)
@@ -1380,7 +1380,7 @@ func (g *Gateway) getTracksHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Создаем прокси
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
+
 	// Модифицируем запрос
 	r.URL.Path = "/api/tracks"
 	r.URL.Host = targetURL.Host
@@ -1415,7 +1415,7 @@ func (g *Gateway) searchTracksHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Создаем прокси
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
+
 	// Модифицируем запрос
 	r.URL.Path = "/api/tracks/search"
 	r.URL.Host = targetURL.Host
@@ -1452,7 +1452,7 @@ func (g *Gateway) getTrackByIdHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Создаем прокси
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
+
 	// Модифицируем запрос
 	r.URL.Path = "/api/tracks/" + trackId
 	r.URL.Host = targetURL.Host

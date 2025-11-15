@@ -22,18 +22,13 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
 # Copy proto files from users, artists, and upload services first
 COPY users/proto/users proto/users
 COPY artists/proto/artists proto/artists
-# Copy only upload.proto (track.proto is not needed in gateway)
-RUN mkdir -p proto/upload
-COPY upload/proto/upload.proto proto/upload/
+COPY upload/proto proto/upload
 
 # Copy gateway source code (excluding proto if it exists)
 COPY gateway/ .
 
 # Fix go_package in upload.proto for gateway module
 RUN sed -i 's|option go_package = "github.com/MusicSocial/upload/proto";|option go_package = "github.com/MusicSocial/api-gateway/proto/upload";|' proto/upload/upload.proto
-
-# Clean up any old generated files before generating new ones
-RUN rm -f proto/upload/*.pb.go
 
 # Generate protobuf files
 RUN mkdir -p proto/users/v1 proto/artists/v1 proto/playlist/v1 proto/tracks/v1 proto/upload && \

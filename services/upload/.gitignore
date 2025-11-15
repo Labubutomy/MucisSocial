@@ -18,6 +18,7 @@ go.work
 
 # Generated proto files
 *.pb.go
+proto/tracks.proto
 
 # Environment files
 .env

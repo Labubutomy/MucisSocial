@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MusicSocial/upload/internal/config"
-	trackspb "github.com/MusicSocial/upload/proto"
+	trackspb "github.com/MusicSocial/upload/proto/tracks/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
