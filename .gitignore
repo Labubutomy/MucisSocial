@@ -32,3 +32,5 @@ vendor/
 # Logs
 *.log
 logs/
+
+scripts/faker/
