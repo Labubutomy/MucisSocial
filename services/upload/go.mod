@@ -3,7 +3,6 @@ module github.com/MusicSocial/upload
 go 1.23
 
 require (
-	github.com/dhowden/tag v0.0.0-20230630033851-978a0926ee25
 	github.com/minio/minio-go/v7 v7.0.66
 	github.com/segmentio/kafka-go v0.4.47
 	google.golang.org/grpc v1.66.1
