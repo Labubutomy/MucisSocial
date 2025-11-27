@@ -32,6 +32,7 @@ import (
 
 	artistpb "github.com/MusicSocial/api-gateway/proto/artists/v1"
 	playlistpb "github.com/MusicSocial/api-gateway/proto/playlist/v1"
+	sessionpb "github.com/MusicSocial/api-gateway/proto/session/v1"
 	trackspb "github.com/MusicSocial/api-gateway/proto/tracks/v1"
 	uploadpb "github.com/MusicSocial/api-gateway/proto/upload"
 	pb "github.com/MusicSocial/api-gateway/proto/users/v1"
@@ -52,6 +53,7 @@ type Gateway struct {
 	tracksClient   trackspb.TracksServiceClient
 	playlistClient playlistpb.PlaylistServiceClient
 	uploadClient   uploadpb.UploadServiceClient
+	sessionClient  sessionpb.SessionServiceClient
 	jwtSecret      []byte
 }
 
@@ -97,12 +99,24 @@ func main() {
 	}
 	defer uploadConn.Close()
 
+	// Connect to session gRPC service
+	sessionConn, err := grpc.Dial("session-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to session gRPC service: %v", err)
+	}
+	defer sessionConn.Close()
+	if err != nil {
+		log.Fatalf("Failed to connect to session gRPC service: %v", err)
+	}
+	defer sessionConn.Close()
+
 	gateway := &Gateway{
 		userClient:     pb.NewUserServiceClient(userConn),
 		artistClient:   artistpb.NewArtistServiceClient(artistConn),
 		tracksClient:   trackspb.NewTracksServiceClient(tracksConn),
 		playlistClient: playlistpb.NewPlaylistServiceClient(playlistConn),
 		uploadClient:   uploadpb.NewUploadServiceClient(uploadConn),
+		sessionClient:  sessionpb.NewSessionServiceClient(sessionConn),
 		jwtSecret:      []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
@@ -135,9 +149,28 @@ func main() {
 	// Upload endpoint (no JWT required)
 	r.HandleFunc("/api/v1/upload/track", gateway.uploadTrackHandler).Methods("POST", "OPTIONS")
 
-	// Protected endpoints (JWT required)
+	// Session endpoints (proxy to session service)
+	// Health check (no auth required)
+	r.HandleFunc("/api/rooms/health", gateway.sessionHealthHandler).Methods("GET", "OPTIONS")
+	
+	// Session endpoints with JWT protection - /api/rooms path
+	sessionRouter := r.PathPrefix("/api/rooms").Subrouter()
+	sessionRouter.Use(gateway.jwtMiddleware)
+	sessionRouter.HandleFunc("/{roomId}", gateway.getRoomHandler).Methods("GET", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}", gateway.createRoomHandler).Methods("POST", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
+	
 	protected := r.PathPrefix("/api/v1").Subrouter()
 	protected.Use(gateway.jwtMiddleware)
+	
+	// Session endpoints (JWT required) - also available under /api/v1/rooms
+	protected.HandleFunc("/rooms/{roomId}", gateway.getRoomHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}", gateway.createRoomHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
 	protected.HandleFunc("/me", gateway.getMeHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me", gateway.updateMeHandler).Methods("PUT", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.getSearchHistoryHandler).Methods("GET", "OPTIONS")
@@ -169,12 +202,19 @@ func main() {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 

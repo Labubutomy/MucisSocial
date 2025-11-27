@@ -200,5 +200,28 @@ export const searchTracks = async (query: string, limit = 20) => {
       offset: 0,
     },
   })
-  return response.data.items.map(mapGatewayTrack)
+
+  // Загружаем имена артистов для всех треков (как в fetchTracks)
+  const tracksWithArtists = await Promise.all(
+    response.data.items.map(async track => {
+      const mappedTrack = mapGatewayTrack(track)
+
+      // Загружаем имя артиста, если есть artist_id
+      if (mappedTrack.artist.id) {
+        try {
+          const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+            `/api/v1/artists/${mappedTrack.artist.id}`
+          )
+          mappedTrack.artist.name = artistResponse.data.name
+        } catch (error) {
+          console.warn(`Failed to fetch artist ${mappedTrack.artist.id}:`, error)
+          // Оставляем 'Unknown', если не удалось загрузить
+        }
+      }
+
+      return mappedTrack
+    })
+  )
+
+  return tracksWithArtists
 }

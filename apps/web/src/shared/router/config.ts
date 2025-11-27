@@ -11,6 +11,8 @@ export const routes = {
   playlistCreate: createRoute(),
   playlistAddTracks: createRoute<{ playlistId: string }>(),
   collection: createRoute<{ collectionId: string }>(),
+  session: createRoute(),
+  sessionRoom: createRoute<{ roomId: string }>(),
 }
 
 export const mappedRoutes = [
@@ -24,6 +26,8 @@ export const mappedRoutes = [
   { route: routes.playlistCreate, path: '/playlists/create' },
   { route: routes.playlistAddTracks, path: '/playlists/:playlistId/add-tracks' },
   { route: routes.collection, path: '/collection/:collectionId' },
+  { route: routes.session, path: '/listen' },
+  { route: routes.sessionRoom, path: '/listen/:roomId' },
 ]
 
 export const router = createHistoryRouter({
