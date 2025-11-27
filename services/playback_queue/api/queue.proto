@@ -62,7 +62,6 @@ message ListQueueResponse {
 
 message GetPrevTrackRequest {
   ContextRef context = 1;
-  string requested_by = 2;
 }
 
 message GetPrevTrackResponse {
@@ -71,7 +70,6 @@ message GetPrevTrackResponse {
 
 message GetNextTrackRequest {
   ContextRef context = 1;
-  string requested_by = 2;
 }
 
 message GetNextTrackResponse {
