@@ -315,6 +315,50 @@ services:
       timeout: 10s
       retries: 3
 
+  # PostgreSQL Database for Playback Queue Service
+  postgres-playback-queue:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-playback-queue
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_playback_queue
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_playback_queue_data:/var/lib/postgresql/data
+      - ./playback_queue/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Playback Queue Service
+  playback-queue-service:
+    build:
+      context: ./playback_queue
+      dockerfile: Dockerfile
+    container_name: music-social-playback-queue
+    environment:
+      - GRPC_PORT=50056
+      - DATABASE_URL=postgres://postgres:password@postgres-playback-queue:5432/music_social_playback_queue?sslmode=disable
+    ports:
+      - "50056:50056"
+    depends_on:
+      postgres-playback-queue:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50056"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # API Gateway (Custom Go Gateway)
   api-gateway:
     build:
@@ -345,6 +389,8 @@ volumes:
   postgres_artists_data:
   postgres_tracks_data:
   postgres_playlist_data:
+  postgres_groups_data:
+  postgres_playback_queue_data:
 
 networks:
   music-network:
