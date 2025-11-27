@@ -11,6 +11,3 @@ CREATE TABLE IF NOT EXISTS playback_queue_items (
     position BIGINT NOT NULL,
     PRIMARY KEY (context_key, position)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS playback_queue_items_context_position_idx
-    ON playback_queue_items(context_key, position);

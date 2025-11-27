@@ -50,15 +50,15 @@ func (s *Service) ListHistory(ctx context.Context, ref ContextRef, limit int) ([
 	return s.repo.ListHistory(ctx, ref, limit)
 }
 
-func (s *Service) GetNextTrack(ctx context.Context, ref ContextRef, requestedBy uuid.UUID) (*QueueItem, error) {
-	if !ref.Valid() || requestedBy == uuid.Nil {
+func (s *Service) GetNextTrack(ctx context.Context, ref ContextRef) (*QueueItem, error) {
+	if !ref.Valid() {
 		return nil, ErrBadRequest
 	}
 	return s.repo.StepNext(ctx, ref)
 }
 
-func (s *Service) GetPrevTrack(ctx context.Context, ref ContextRef, requestedBy uuid.UUID) (*QueueItem, error) {
-	if !ref.Valid() || requestedBy == uuid.Nil {
+func (s *Service) GetPrevTrack(ctx context.Context, ref ContextRef) (*QueueItem, error) {
+	if !ref.Valid() {
 		return nil, ErrBadRequest
 	}
 	return s.repo.StepPrev(ctx, ref)

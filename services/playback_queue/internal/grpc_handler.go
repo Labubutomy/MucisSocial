@@ -63,11 +63,7 @@ func (s *GRPCServer) GetPrevTrack(ctx context.Context, req *queuepb.GetPrevTrack
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	reqBy, err := uuid.Parse(req.GetRequestedBy())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid requested_by")
-	}
-	prev, err := s.svc.GetPrevTrack(ctx, ref, reqBy)
+	prev, err := s.svc.GetPrevTrack(ctx, ref)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -83,11 +79,7 @@ func (s *GRPCServer) GetNextTrack(ctx context.Context, req *queuepb.GetNextTrack
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	reqBy, err := uuid.Parse(req.GetRequestedBy())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid requested_by")
-	}
-	next, err := s.svc.GetNextTrack(ctx, ref, reqBy)
+	next, err := s.svc.GetNextTrack(ctx, ref)
 	if err != nil {
 		return nil, mapError(err)
 	}
