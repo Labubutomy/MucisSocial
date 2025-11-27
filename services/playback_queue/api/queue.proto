@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package playback.queue.v1;
+
+option go_package = "github.com/Labubutomy/MucisSocial/services/playback_queue/api;queuepb";
+
+message ContextRef {
+  string context_type = 1;
+  string context_id = 2;
+}
+
+message QueueItem {
+  string track_id = 1;
+}
+
+service PlaybackQueueService {
+  rpc CreateQueue(CreateQueueRequest) returns (CreateQueueResponse);
+  rpc EnqueueTrack(EnqueueTrackRequest) returns (EnqueueTrackResponse);
+  rpc RemoveTrack(RemoveTrackRequest) returns (RemoveTrackResponse);
+  rpc ListQueue(ListQueueRequest) returns (ListQueueResponse);
+  rpc ListPlayedTracks(ListPlayedTracksRequest) returns (ListPlayedTracksResponse);
+  rpc GetCurrentTrack(GetCurrentTrackRequest) returns (GetCurrentTrackResponse);
+  rpc GetNextTrack(GetNextTrackRequest) returns (GetNextTrackResponse);
+  rpc GetPrevTrack(GetPrevTrackRequest) returns (GetPrevTrackResponse);
+  rpc ClearQueue(ClearQueueRequest) returns (ClearQueueResponse);
+}
+
+message CreateQueueRequest {
+  string context_type = 1;
+}
+
+message CreateQueueResponse {
+  ContextRef context = 1;
+}
+
+message EnqueueTrackRequest {
+  ContextRef context = 1;
+  string track_id = 2;
+}
+
+message EnqueueTrackResponse {
+  QueueItem item = 1;
+}
+
+message RemoveTrackRequest {
+  ContextRef context = 1;
+  string track_id = 2;
+}
+
+message RemoveTrackResponse {
+  bool success = 1;
+}
+
+message ListQueueRequest {
+  ContextRef context = 1;
+  int32 limit = 2;
+}
+
+message ListQueueResponse {
+  repeated QueueItem items = 1;
+}
+
+message GetPrevTrackRequest {
+  ContextRef context = 1;
+  string requested_by = 2;
+}
+
+message GetPrevTrackResponse {
+  QueueItem previous = 1;
+}
+
+message GetNextTrackRequest {
+  ContextRef context = 1;
+  string requested_by = 2;
+}
+
+message GetNextTrackResponse {
+  QueueItem next = 1;
+}
+
+message ListPlayedTracksRequest {
+  ContextRef context = 1;
+  int32 limit = 2;
+}
+
+message ListPlayedTracksResponse {
+  repeated QueueItem items = 1;
+}
+
+message GetCurrentTrackRequest {
+  ContextRef context = 1;
+}
+
+message GetCurrentTrackResponse {
+  QueueItem current = 1;
+}
+
+message ClearQueueRequest {
+  ContextRef context = 1;
+}
+
+message ClearQueueResponse {
+  bool success = 1;
+}
