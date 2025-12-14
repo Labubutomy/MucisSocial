@@ -19,9 +19,23 @@ rpk topic create track-events \
     --topic-config retention.ms=604800000 \
     --topic-config compression.type=snappy
 
+rpk topic create music-session-events \
+    --brokers redpanda:9092 \
+    --partitions 10 \
+    --replicas 1 \
+    --topic-config retention.ms=604800000 \
+    --topic-config compression.type=snappy
+
 rpk topic create listening-events \
     --brokers redpanda:9092 \
     --partitions 6 \
+    --replicas 1 \
+    --topic-config retention.ms=604800000 \
+    --topic-config compression.type=snappy
+    
+rpk topic create music-session-sync \
+    --brokers redpanda:9092 \
+    --partitions 10 \
     --replicas 1 \
     --topic-config retention.ms=604800000 \
     --topic-config compression.type=snappy

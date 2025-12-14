@@ -8,8 +8,12 @@ local/
 *_grpc.pb.go
 
 # Go binary files
-main
-*/main
+# Ignore main binaries in root and service directories, but not src/main directories
+/main
+/services/*/main
+/services/*/cmd/*/main
+# Explicitly exclude src/main directories (standard source directories in Kotlin/Java projects)
+!**/src/main/**
 
 # Go dependency files
 vendor/
@@ -32,3 +36,5 @@ vendor/
 # Logs
 *.log
 logs/
+
+scripts/faker/

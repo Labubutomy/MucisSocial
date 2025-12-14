@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package session.v1;
+
+option go_package = "github.com/MusicSocial/api-gateway/proto/session/v1";
+option java_package = "com.musicsocial.session.proto.v1";
+option java_outer_classname = "SessionProto";
+
+import "google/protobuf/timestamp.proto";
+
+// Session Service gRPC API
+service SessionService {
+  // Room management
+  rpc CreateRoom(CreateRoomRequest) returns (CreateRoomResponse);
+  rpc GetRoom(GetRoomRequest) returns (GetRoomResponse);
+  rpc DeleteRoom(DeleteRoomRequest) returns (DeleteRoomResponse);
+  
+  // Participant management
+  rpc AddParticipant(AddParticipantRequest) returns (AddParticipantResponse);
+  rpc RemoveParticipant(RemoveParticipantRequest) returns (RemoveParticipantResponse);
+  
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Room State Messages
+message RoomState {
+  string room_id = 1;
+  TrackInfo current_track = 2;
+  double position = 3; // позиция в секундах
+  bool is_playing = 4;
+  repeated Participant participants = 5;
+  repeated TrackInfo queue = 6;
+  Action last_action = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message TrackInfo {
+  string track_id = 1;
+  string title = 2;
+  string artist = 3;
+  double duration = 4;
+  string cdn_url = 5;
+}
+
+message Participant {
+  string user_id = 1;
+  string username = 2;
+  bool is_online = 3;
+  google.protobuf.Timestamp joined_at = 4;
+}
+
+message Action {
+  string action_id = 1;
+  ActionType type = 2;
+  string user_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, string> payload = 5;
+}
+
+enum ActionType {
+  ACTION_TYPE_UNSPECIFIED = 0;
+  ACTION_TYPE_PLAY = 1;
+  ACTION_TYPE_PAUSE = 2;
+  ACTION_TYPE_SEEK = 3;
+  ACTION_TYPE_CHANGE_TRACK = 4;
+  ACTION_TYPE_JOIN_ROOM = 5;
+  ACTION_TYPE_LEAVE_ROOM = 6;
+}
+
+// Request/Response Messages
+message CreateRoomRequest {
+  string room_id = 1;
+}
+
+message CreateRoomResponse {
+  RoomState room = 1;
+}
+
+message GetRoomRequest {
+  string room_id = 1;
+}
+
+message GetRoomResponse {
+  RoomState room = 1;
+}
+
+message DeleteRoomRequest {
+  string room_id = 1;
+}
+
+message DeleteRoomResponse {
+  bool success = 1;
+}
+
+message AddParticipantRequest {
+  string room_id = 1;
+  string user_id = 2;
+  string username = 3;
+}
+
+message AddParticipantResponse {
+  RoomState room = 1;
+}
+
+message RemoveParticipantRequest {
+  string room_id = 1;
+  string user_id = 2;
+}
+
+message RemoveParticipantResponse {
+  RoomState room = 1;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+}
+

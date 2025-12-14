@@ -8,4 +8,5 @@ export const API_CONFIG = {
   gateway: import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:8080',
   mockApi: import.meta.env.VITE_MOCK_API_URL || 'http://localhost:8100',
   cdn: import.meta.env.VITE_CDN_URL || 'http://localhost:8000',
+  wsGateway: import.meta.env.VITE_WS_GATEWAY_URL || 'ws://localhost:8001',
 } as const

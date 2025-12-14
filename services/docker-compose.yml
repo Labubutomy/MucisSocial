@@ -323,6 +323,50 @@ services:
       timeout: 10s
       retries: 3
 
+  # PostgreSQL Database for Playback Queue Service
+  postgres-playback-queue:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-playback-queue
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_playback_queue
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_playback_queue_data:/var/lib/postgresql/data
+      - ./playback_queue/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Playback Queue Service
+  playback-queue-service:
+    build:
+      context: ./playback_queue
+      dockerfile: Dockerfile
+    container_name: music-social-playback-queue
+    environment:
+      - GRPC_PORT=50056
+      - DATABASE_URL=postgres://postgres:password@postgres-playback-queue:5432/music_social_playback_queue?sslmode=disable
+    ports:
+      - "50056:50056"
+    depends_on:
+      postgres-playback-queue:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=localhost:50056"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # API Gateway (Custom Go Gateway)
   api-gateway:
     build:
@@ -387,11 +431,79 @@ services:
       retries: 3
       start_period: 10s
 
+  # WebSocket Gateway Service
+  ws-gateway:
+    build:
+      context: ./ws_gateway
+    container_name: music-social-ws-gateway
+    ports:
+      - "8001:8001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - WS_GATEWAY_HOST=0.0.0.0
+      - WS_GATEWAY_PORT=8001
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+      - WS_GATEWAY_JWT_ALGORITHM=HS256
+      - WS_GATEWAY_REDIS_HOST=redis
+      - WS_GATEWAY_REDIS_PORT=6379
+      - WS_GATEWAY_KAFKA_BROKERS=redpanda:9092
+      - WS_GATEWAY_KAFKA_EVENTS_TOPIC=music-session-events
+      - WS_GATEWAY_KAFKA_SYNC_TOPIC=music-session-sync
+      - WS_GATEWAY_PING_INTERVAL=30
+      - WS_GATEWAY_LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Session Service
+  session-service:
+    build:
+      context: ./session
+    container_name: music-social-session
+    ports:
+      - "8081:8080"
+      - "50056:50056"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - SERVER_PORT=8080
+      - GRPC_PORT=50056
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DATABASE=music_sessions
+      - SPRING_DATA_MONGODB_URI=mongodb://mongodb:27017/music_sessions
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - KAFKA_EVENTS_TOPIC=music-session-events
+      - KAFKA_SYNC_TOPIC=music-session-sync
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/rooms/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres_data:
   postgres_artists_data:
   postgres_tracks_data:
   postgres_playlist_data:
+  postgres_groups_data:
+  postgres_playback_queue_data:
 
 networks:
   music-network:

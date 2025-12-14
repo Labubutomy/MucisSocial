@@ -25,6 +25,7 @@ export const AppHeader = () => {
     isAuthenticated,
     user,
     navigateToHome,
+    navigateToSession,
     navigateToProfile,
     navigateToAuth,
     changeQuery,
@@ -40,6 +41,7 @@ export const AppHeader = () => {
     isAuthenticated: $isAuthenticated,
     user: $user,
     navigateToHome: routes.home.navigate,
+    navigateToSession: routes.session.navigate,
     navigateToProfile: routes.profile.navigate,
     navigateToAuth: routes.auth.navigate,
     changeQuery: queryChanged,
@@ -166,6 +168,13 @@ export const AppHeader = () => {
             </div>
           )}
         </form>
+        <button
+          type="button"
+          onClick={() => navigateToSession({ params: {}, query: {} })}
+          className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
+        >
+          Слушать вместе
+        </button>
         {isAuthenticated ? (
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <button
