@@ -48,13 +48,14 @@ import (
 )
 
 type Gateway struct {
-	userClient     pb.UserServiceClient
-	artistClient   artistpb.ArtistServiceClient
-	tracksClient   trackspb.TracksServiceClient
-	playlistClient playlistpb.PlaylistServiceClient
-	uploadClient   uploadpb.UploadServiceClient
-	sessionClient  sessionpb.SessionServiceClient
-	jwtSecret      []byte
+	userClient         pb.UserServiceClient
+	artistClient       artistpb.ArtistServiceClient
+	tracksClient       trackspb.TracksServiceClient
+	playlistClient     playlistpb.PlaylistServiceClient
+	uploadClient       uploadpb.UploadServiceClient
+  sessionClient  sessionpb.SessionServiceClient
+	recommendationsURL string
+	jwtSecret          []byte
 }
 
 type ErrorResponse struct {
@@ -111,13 +112,14 @@ func main() {
 	defer sessionConn.Close()
 
 	gateway := &Gateway{
-		userClient:     pb.NewUserServiceClient(userConn),
-		artistClient:   artistpb.NewArtistServiceClient(artistConn),
-		tracksClient:   trackspb.NewTracksServiceClient(tracksConn),
-		playlistClient: playlistpb.NewPlaylistServiceClient(playlistConn),
-		uploadClient:   uploadpb.NewUploadServiceClient(uploadConn),
-		sessionClient:  sessionpb.NewSessionServiceClient(sessionConn),
-		jwtSecret:      []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
+		userClient:         pb.NewUserServiceClient(userConn),
+		artistClient:       artistpb.NewArtistServiceClient(artistConn),
+		tracksClient:       trackspb.NewTracksServiceClient(tracksConn),
+		playlistClient:     playlistpb.NewPlaylistServiceClient(playlistConn),
+		uploadClient:       uploadpb.NewUploadServiceClient(uploadConn),
+    sessionClient:  sessionpb.NewSessionServiceClient(sessionConn),
+		recommendationsURL: getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080"),
+		jwtSecret:          []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
 	r := mux.NewRouter()
@@ -183,6 +185,9 @@ func main() {
 	// Tracks endpoints
 	protected.HandleFunc("/tracks", gateway.createTrackHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/tracks/{trackId}", gateway.updateTrackInfoHandler).Methods("PUT", "OPTIONS")
+
+	// Recommendations endpoint
+	protected.HandleFunc("/recommendations", gateway.getRecommendationsHandler).Methods("GET", "OPTIONS")
 
 	// Playlist endpoints
 	protected.HandleFunc("/playlists", gateway.createPlaylistHandler).Methods("POST", "OPTIONS")
@@ -903,6 +908,70 @@ func (g *Gateway) updateTrackInfoHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// ===== RECOMMENDATIONS HANDLERS =====
+
+// @Summary Получить рекомендации
+// @Description Получение персональных рекомендаций треков для пользователя
+// @Tags recommendations
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Количество рекомендаций (по умолчанию 20, максимум 100)"
+// @Param exclude_explicit query boolean false "Исключить explicit треки"
+// @Success 200 {object} map[string][]string "Список рекомендованных треков"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/recommendations [get]
+func (g *Gateway) getRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id").(string)
+
+	// Парсинг параметров запроса
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	// Формирование запроса к сервису рекомендаций
+	reqBody := map[string]interface{}{
+		"user_id": userID,
+		"limit":   limit,
+	}
+
+	// Добавление фильтров если они указаны
+	if excludeExplicit := r.URL.Query().Get("exclude_explicit"); excludeExplicit == "true" {
+		reqBody["filters"] = map[string]interface{}{
+			"exclude_explicit": true,
+		}
+	}
+
+	// Отправка запроса к сервису рекомендаций
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		http.Error(w, "Failed to encode request", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := http.Post(
+		g.recommendationsURL+"/recommendations",
+		"application/json",
+		strings.NewReader(string(jsonData)),
+	)
+	if err != nil {
+		log.Printf("Failed to get recommendations: %v", err)
+		http.Error(w, "Failed to get recommendations", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Проксирование ответа
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
 }
 
 // ===== PLAYLIST HANDLERS =====

@@ -90,10 +90,14 @@ services:
       CDN_LOG_LEVEL: INFO
       CDN_LOG_REQUESTS: "true"
       CDN_LOG_CACHE_STATS: "true"
+      CDN_KAFKA_ENABLED: "true"
+      CDN_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      CDN_LISTENING_EVENTS_TOPIC: listening-events
     networks:
       - music-network
     depends_on:
       - streaming
+      - redpanda
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -254,10 +258,14 @@ services:
       - DATABASE_URL=postgres://postgres:password@postgres-tracks:5432/music_social_tracks?sslmode=disable
       - LOG_LEVEL=info
       - ENVIRONMENT=development
+      - KAFKA_BROKERS=redpanda:9092
+      - TRACK_EVENTS_TOPIC=track-events
     ports:
       - "50053:50053"
     depends_on:
       postgres-tracks:
+        condition: service_healthy
+      redpanda:
         condition: service_healthy
     networks:
       - music-network
@@ -373,6 +381,7 @@ services:
       - tracks-service
       - playlist-service
       - upload
+      - recommendations
     networks:
       - music-network
     restart: unless-stopped
@@ -383,6 +392,44 @@ services:
       - ARTISTS_SERVICE_URL=artists-service:50052
       - TRACKS_SERVICE_URL=http://tracks-service:8080
       - PLAYLIST_SERVICE_URL=playlist-service:50054
+      - RECOMMENDATIONS_SERVICE_URL=http://recommendations:8080
+
+  # Recommendations Service
+  recommendations:
+    build:
+      context: .
+      dockerfile: ./recommendations/Dockerfile
+    container_name: recommendations-service
+    environment:
+      - HTTP_PORT=8080
+      - KAFKA_BROKERS=redpanda:9092
+      - TRACK_EVENTS_TOPIC=track-events
+      - LISTENING_EVENTS_TOPIC=listening-events
+      - TRACKS_SERVICE_URL=http://tracks-service:8080
+      - BOOTSTRAP_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=recommendations
+      - BACKUP_INTERVAL=5m
+    ports:
+      - "8090:8080"
+    networks:
+      - music-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      tracks-service:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # WebSocket Gateway Service
   ws-gateway:
