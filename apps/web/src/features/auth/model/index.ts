@@ -38,6 +38,7 @@ export const $session = createStore<AuthSession | null>(null)
     refreshToken: payload.refreshToken,
   }))
   .on(sessionHydrated, (_, session) => session)
+  .on(clearSessionFx.done, () => null)
   .reset(signOut)
 
 export const $isAuthenticated = $session.map(Boolean)
@@ -83,7 +84,19 @@ sample({
 sample({
   clock: readSessionFx.doneData,
   filter: (session): session is AuthSession => Boolean(session),
-  target: [sessionHydrated, fetchMeFx],
+  target: sessionHydrated,
+})
+
+// After session is hydrated, fetch user profile
+sample({
+  clock: sessionHydrated,
+  target: fetchMeFx,
+})
+
+// If fetchMe fails, clear invalid session
+sample({
+  clock: fetchMeFx.fail,
+  target: clearSessionFx,
 })
 
 sample({

@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: session-service
+  
+  data:
+    mongodb:
+      # Use URI from environment variable SPRING_DATA_MONGODB_URI, or construct from components
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://${MONGODB_HOST:mongodb}:${MONGODB_PORT:27017}/${MONGODB_DATABASE:music_sessions}}
+      auto-index-creation: false
+  
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DB:0}
+    timeout: 2000ms
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:redpanda:9092}
+    consumer:
+      group-id: session-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# gRPC Server Configuration
+grpc:
+  server:
+    port: ${GRPC_PORT:50056}
+    enable-reflection: true
+
+kafka:
+  topics:
+    events: ${KAFKA_EVENTS_TOPIC:music-session-events}
+    sync: ${KAFKA_SYNC_TOPIC:music-session-sync}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.musicsocial.session: ${LOG_LEVEL:INFO}
