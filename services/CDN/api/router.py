@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from typing import Any
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from core.cache import Cache
 from core.config import Settings, get_settings
+from core.event_producer import ListeningEventProducer
 from services.cdn import CDNService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +20,12 @@ logger = logging.getLogger(__name__)
 # Global cache instance
 _cache: Cache | None = None
 _cdn_service: CDNService | None = None
+_event_producer: ListeningEventProducer | None = None
 _stats_task: asyncio.Task | None = None
+
+# Pattern to extract track_id from resource path
+# Expected format: /tracks/{track_id}/... or /{track_id}/...
+TRACK_ID_PATTERN = re.compile(r"/(?:tracks/)?([a-f0-9-]{36})/", re.IGNORECASE)
 
 
 async def _log_cache_stats_periodically():
@@ -40,18 +47,30 @@ async def _log_cache_stats_periodically():
 @asynccontextmanager
 async def lifespan(app):
     """Lifespan context manager for startup/shutdown."""
-    global _cache, _cdn_service, _stats_task
+    global _cache, _cdn_service, _event_producer, _stats_task
     settings = get_settings()
     _cache = Cache(max_size=settings.cache_max_size)
     _cdn_service = CDNService(settings, _cache)
+
+    # Initialize Kafka event producer
+    _event_producer = ListeningEventProducer(
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        topic=settings.listening_events_topic,
+        enabled=settings.kafka_enabled,
+    )
+    await _event_producer.start()
+
+    # Make event producer available to CDN service
+    _cdn_service.set_event_producer(_event_producer)
+
     logger.info("CDN service started")
-    
+
     # Start periodic stats logging if enabled
     if settings.log_cache_stats:
         _stats_task = asyncio.create_task(_log_cache_stats_periodically())
-    
+
     yield
-    
+
     # Cancel stats task
     if _stats_task:
         _stats_task.cancel()
@@ -59,7 +78,11 @@ async def lifespan(app):
             await _stats_task
         except asyncio.CancelledError:
             pass
-    
+
+    # Stop event producer
+    if _event_producer:
+        await _event_producer.stop()
+
     if _cdn_service:
         await _cdn_service.close()
     logger.info("CDN service stopped")
@@ -180,7 +203,11 @@ async def cache_analytics(
             """
         )
 
-    summary_html = "\n".join(summary_rows) if summary_rows else "<tr><td colspan='4'>Нет данных</td></tr>"
+    summary_html = (
+        "\n".join(summary_rows)
+        if summary_rows
+        else "<tr><td colspan='4'>Нет данных</td></tr>"
+    )
 
     html = f"""
     <!DOCTYPE html>
@@ -309,4 +336,3 @@ async def cache_summary(
     """Aggregate cache stats by resource type."""
     summary = cdn_service.get_cache_summary()
     return JSONResponse(content=summary)
-

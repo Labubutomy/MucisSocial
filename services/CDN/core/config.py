@@ -70,9 +70,19 @@ class Settings(BaseSettings):
         default=30, ge=5, description="Health check interval in seconds"
     )
 
+    # Kafka configuration for listening events
+    kafka_enabled: bool = Field(
+        default=True, description="Enable Kafka event producer for listening events"
+    )
+    kafka_bootstrap_servers: str = Field(
+        default="localhost:9092", description="Kafka bootstrap servers"
+    )
+    listening_events_topic: str = Field(
+        default="listening-events", description="Topic for listening events"
+    )
+
 
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
-
