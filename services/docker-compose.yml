@@ -363,6 +363,11 @@ services:
       - LISTENING_EVENTS_TOPIC=listening-events
       - TRACKS_SERVICE_URL=http://tracks-service:8080
       - BOOTSTRAP_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=recommendations
+      - BACKUP_INTERVAL=5m
     ports:
       - "8090:8080"
     networks:
@@ -371,6 +376,8 @@ services:
       redpanda:
         condition: service_healthy
       tracks-service:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

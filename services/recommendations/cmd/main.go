@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/api"
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/bootstrap"
@@ -20,10 +21,48 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Initialize stores
+	// Initialize in-memory stores with MinIO backup
+	log.Println("Using in-memory storage with MinIO backup")
 	trackStore := store.NewInMemoryTrackStore()
 	userProfileStore := store.NewInMemoryUserProfileStore()
 	globalStatsStore := store.NewInMemoryGlobalStatsStore()
+
+	// Initialize MinIO backup
+	backupStore, err := store.NewMinIOBackupStore(
+		cfg.MinIOEndpoint,
+		cfg.MinIOAccessKey,
+		cfg.MinIOSecretKey,
+		cfg.MinIOBucketName,
+		trackStore,
+		userProfileStore,
+		globalStatsStore,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize MinIO backup: %v", err)
+	}
+
+	// Load existing data from backup
+	if err := backupStore.LoadFromBackup(); err != nil {
+		log.Printf("Failed to load backup (will start fresh): %v", err)
+	}
+
+	// Parse backup interval
+	backupInterval, err := time.ParseDuration(cfg.BackupInterval)
+	if err != nil {
+		log.Printf("Invalid backup interval '%s', using 5m: %v", cfg.BackupInterval, err)
+		backupInterval = 5 * time.Minute
+	}
+
+	// Start periodic backup
+	backupStore.StartPeriodicBackup(backupInterval)
+
+	// Setup graceful backup on shutdown
+	defer func() {
+		log.Println("Saving final backup before shutdown...")
+		if err := backupStore.SaveBackup(); err != nil {
+			log.Printf("Failed to save final backup: %v", err)
+		}
+	}()
 
 	// Initialize candidate generators
 	genreGenerator := generators.NewTopGenresGenerator(trackStore, globalStatsStore, 5, 50)

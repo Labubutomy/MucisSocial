@@ -6,13 +6,13 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Copy go mod files
-COPY go.mod go.sum* ./
+COPY recommendations/go.mod recommendations/go.sum* ./
 
 # Download dependencies
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY recommendations/ .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o /recommendation-service ./cmd/main.go

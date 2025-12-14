@@ -11,6 +11,7 @@ type GlobalStatsStore interface {
 	GetPlayCount(trackID string) int
 	GetTopTracks(limit int) []string
 	GetTopTracksInSet(trackIDs []string, limit int) []string
+	GetAllPlayCounts() map[string]int // For backup purposes
 }
 
 // InMemoryGlobalStatsStore is an in-memory implementation of GlobalStatsStore
@@ -88,4 +89,16 @@ func (s *InMemoryGlobalStatsStore) GetTopTracksInSet(trackIDs []string, limit in
 	}
 
 	return result
+}
+
+// GetAllPlayCounts returns all track play counts for backup purposes
+func (s *InMemoryGlobalStatsStore) GetAllPlayCounts() map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	resultCounts := make(map[string]int)
+	for trackID, count := range s.playCounts {
+		resultCounts[trackID] = count
+	}
+	return resultCounts
 }

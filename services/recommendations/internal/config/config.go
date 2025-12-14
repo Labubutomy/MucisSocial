@@ -9,6 +9,13 @@ type Config struct {
 	ListeningEventsTopic string
 	TracksServiceURL     string // URL for tracks service API (for bootstrap)
 	BootstrapEnabled     bool   // Enable loading tracks on startup
+
+	// MinIO backup configuration
+	MinIOEndpoint   string
+	MinIOAccessKey  string
+	MinIOSecretKey  string
+	MinIOBucketName string
+	BackupInterval  string // e.g., "5m", "1h"
 }
 
 func Load() *Config {
@@ -19,6 +26,13 @@ func Load() *Config {
 		ListeningEventsTopic: getEnv("LISTENING_EVENTS_TOPIC", "listening-events"),
 		TracksServiceURL:     getEnv("TRACKS_SERVICE_URL", ""),
 		BootstrapEnabled:     getEnv("BOOTSTRAP_ENABLED", "true") == "true",
+
+		// MinIO backup config
+		MinIOEndpoint:   getEnv("MINIO_ENDPOINT", "minio:9000"),
+		MinIOAccessKey:  getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey:  getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOBucketName: getEnv("MINIO_BUCKET_NAME", "recommendations"),
+		BackupInterval:  getEnv("BACKUP_INTERVAL", "5m"),
 	}
 }
 

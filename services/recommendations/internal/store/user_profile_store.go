@@ -11,6 +11,7 @@ type UserProfileStore interface {
 	Get(userID string) (*models.UserProfile, bool)
 	GetOrCreate(userID string) *models.UserProfile
 	Update(profile *models.UserProfile)
+	GetAll() map[string]*models.UserProfile // For backup purposes
 }
 
 // InMemoryUserProfileStore is an in-memory implementation of UserProfileStore
@@ -50,4 +51,15 @@ func (s *InMemoryUserProfileStore) Update(profile *models.UserProfile) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.profiles[profile.UserID] = profile
+}
+
+func (s *InMemoryUserProfileStore) GetAll() map[string]*models.UserProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]*models.UserProfile)
+	for userID, profile := range s.profiles {
+		result[userID] = profile
+	}
+	return result
 }
