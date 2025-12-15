@@ -39,7 +39,7 @@ func TestRecommendationEngineBasic(t *testing.T) {
 
 	genreGen := generators.NewTopGenresGenerator(trackStore, globalStatsStore, 5, 50)
 	artistGen := generators.NewTopArtistsGenerator(trackStore, globalStatsStore, 5, 50)
-	fallbackGen := generators.NewFallbackGenerator(globalStatsStore, 100)
+	fallbackGen := generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 
 	scorer := scorers.NewHeuristicScorer(trackStore, globalStatsStore)
 
@@ -89,7 +89,7 @@ func TestRecommendationEngineExplicitFilter(t *testing.T) {
 	profile.GenreListenCount["rock"] = 5
 
 	genreGen := generators.NewTopGenresGenerator(trackStore, globalStatsStore, 5, 50)
-	fallbackGen := generators.NewFallbackGenerator(globalStatsStore, 100)
+	fallbackGen := generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 	scorer := scorers.NewHeuristicScorer(trackStore, globalStatsStore)
 
 	recEngine := engine.NewRecommendationEngine(
@@ -127,7 +127,7 @@ func TestRecommendationEngineGenreFilter(t *testing.T) {
 
 	profile := models.NewUserProfile("user1")
 
-	fallbackGen := generators.NewFallbackGenerator(globalStatsStore, 100)
+	fallbackGen := generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 	scorer := scorers.NewHeuristicScorer(trackStore, globalStatsStore)
 
 	recEngine := engine.NewRecommendationEngine(
@@ -201,7 +201,7 @@ func TestCandidateGeneratorInterface(t *testing.T) {
 		t.Errorf("Expected top_artists, got %s", gen.Name())
 	}
 
-	gen = generators.NewFallbackGenerator(globalStatsStore, 100)
+	gen = generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 	if gen.Name() != "fallback_global" {
 		t.Errorf("Expected fallback_global, got %s", gen.Name())
 	}

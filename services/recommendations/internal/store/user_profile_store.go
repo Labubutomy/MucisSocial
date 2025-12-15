@@ -31,6 +31,18 @@ func (s *InMemoryUserProfileStore) Get(userID string) (*models.UserProfile, bool
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	profile, ok := s.profiles[userID]
+	if ok && profile != nil {
+		// Ensure all maps are initialized (in case they were nil from backup)
+		if profile.GenreListenCount == nil {
+			profile.GenreListenCount = make(map[string]int)
+		}
+		if profile.ArtistListenCount == nil {
+			profile.ArtistListenCount = make(map[string]int)
+		}
+		if profile.ListenedTracks == nil {
+			profile.ListenedTracks = make(map[string]struct{})
+		}
+	}
 	return profile, ok
 }
 
@@ -39,6 +51,16 @@ func (s *InMemoryUserProfileStore) GetOrCreate(userID string) *models.UserProfil
 	defer s.mu.Unlock()
 
 	if profile, ok := s.profiles[userID]; ok {
+		// Ensure all maps are initialized (in case they were nil from backup)
+		if profile.GenreListenCount == nil {
+			profile.GenreListenCount = make(map[string]int)
+		}
+		if profile.ArtistListenCount == nil {
+			profile.ArtistListenCount = make(map[string]int)
+		}
+		if profile.ListenedTracks == nil {
+			profile.ListenedTracks = make(map[string]struct{})
+		}
 		return profile
 	}
 
@@ -50,6 +72,18 @@ func (s *InMemoryUserProfileStore) GetOrCreate(userID string) *models.UserProfil
 func (s *InMemoryUserProfileStore) Update(profile *models.UserProfile) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	
+	// Ensure all maps are initialized (in case they were nil from backup)
+	if profile.GenreListenCount == nil {
+		profile.GenreListenCount = make(map[string]int)
+	}
+	if profile.ArtistListenCount == nil {
+		profile.ArtistListenCount = make(map[string]int)
+	}
+	if profile.ListenedTracks == nil {
+		profile.ListenedTracks = make(map[string]struct{})
+	}
+	
 	s.profiles[profile.UserID] = profile
 }
 
