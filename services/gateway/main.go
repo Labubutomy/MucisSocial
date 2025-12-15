@@ -101,7 +101,7 @@ func main() {
 	defer uploadConn.Close()
 
 	// Connect to session gRPC service
-	sessionConn, err := grpc.Dial("session-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	sessionConn, err := grpc.Dial("session-service:50060", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to session gRPC service: %v", err)
 	}
@@ -199,6 +199,23 @@ func main() {
 	protected.HandleFunc("/playlists/{playlistId}/tracks", gateway.addTrackToPlaylistHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/playlists/{playlistId}/tracks/{trackId}", gateway.removeTrackFromPlaylistHandler).Methods("DELETE", "OPTIONS")
 
+	// Routes endpoints (proxy to routes-service)
+	// Public routes
+	r.HandleFunc("/api/v1/routes/nearby", gateway.findNearbyRoutesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes/search", gateway.searchRoutesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes/{routeId}", gateway.getRouteHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes", gateway.listRoutesHandler).Methods("GET", "OPTIONS")
+	
+	// Protected routes (JWT required)
+	protected.HandleFunc("/routes", gateway.createRouteHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}", gateway.updateRouteHandler).Methods("PUT", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}", gateway.deleteRouteHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points", gateway.getRoutePointsHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points", gateway.addRoutePointHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/{pointId}", gateway.updateRoutePointHandler).Methods("PUT", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/{pointId}", gateway.deleteRoutePointHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/reorder", gateway.reorderRoutePointsHandler).Methods("POST", "OPTIONS")
+
 	port := getEnv("PORT", "8080")
 	log.Printf("API Gateway starting on port %s", port)
 	log.Printf("Swagger documentation available at: http://localhost:%s/swagger/", port)
@@ -208,14 +225,18 @@ func main() {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
+		// If no origin, allow all (for same-origin requests)
 		if origin == "" {
-			origin = "*"
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Credentials", "false")
+		} else {
+			// For cross-origin requests, use specific origin with credentials
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
 		
-		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		if r.Method == "OPTIONS" {
@@ -1570,4 +1591,95 @@ func (g *Gateway) getTrackByIdHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проксируем запрос
 	proxy.ServeHTTP(w, r)
+}
+
+// Routes handlers - proxy to routes-service
+
+func (g *Gateway) proxyRoutesHandler(w http.ResponseWriter, r *http.Request, path string) {
+	routesServiceURL := getEnv("ROUTES_SERVICE_URL", "http://routes-service:8000")
+	targetURL, err := url.Parse(routesServiceURL)
+	if err != nil {
+		writeError(w, "Invalid routes service URL", http.StatusInternalServerError)
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	
+	// Preserve original path for proper routing
+	originalPath := r.URL.Path
+	r.URL.Path = path
+	r.URL.Host = targetURL.Host
+	r.URL.Scheme = targetURL.Scheme
+	r.Host = targetURL.Host
+	
+	// CORS headers are already set by corsMiddleware, don't duplicate
+	proxy.ServeHTTP(w, r)
+	
+	// Restore original path
+	r.URL.Path = originalPath
+}
+
+func (g *Gateway) findNearbyRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/nearby")
+}
+
+func (g *Gateway) searchRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/search")
+}
+
+func (g *Gateway) getRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) listRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes")
+}
+
+func (g *Gateway) createRouteHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes")
+}
+
+func (g *Gateway) updateRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) deleteRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) getRoutePointsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points")
+}
+
+func (g *Gateway) addRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points")
+}
+
+func (g *Gateway) updateRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	pointId := vars["pointId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/"+pointId)
+}
+
+func (g *Gateway) deleteRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	pointId := vars["pointId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/"+pointId)
+}
+
+func (g *Gateway) reorderRoutePointsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/reorder")
 }

@@ -28,7 +28,7 @@ WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
 
 # Expose ports (REST and gRPC)
-EXPOSE 8080 50056
+EXPOSE 8080 50060
 
 # Run application
 ENTRYPOINT ["java", "-jar", "app.jar"]
