@@ -25,10 +25,11 @@ type MinIOBackupStore struct {
 }
 
 type BackupData struct {
-	Tracks       map[string]*models.Track       `json:"tracks"`
-	UserProfiles map[string]*models.UserProfile `json:"user_profiles"`
-	GlobalStats  map[string]int                 `json:"global_stats"`
-	Timestamp    time.Time                      `json:"timestamp"`
+	Tracks          map[string]*models.Track       `json:"tracks"`
+	UserProfiles   map[string]*models.UserProfile  `json:"user_profiles"`
+	GlobalStats     map[string]int                 `json:"global_stats"`
+	MonthlyStats    map[string]int                 `json:"monthly_stats"`
+	Timestamp       time.Time                      `json:"timestamp"`
 }
 
 func NewMinIOBackupStore(
@@ -113,12 +114,23 @@ func (s *MinIOBackupStore) LoadFromBackup() error {
 
 	// Restore global stats
 	if memStatsStore, ok := s.globalStatsStore.(*InMemoryGlobalStatsStore); ok {
+		// Restore all-time stats
 		for trackID, count := range backup.GlobalStats {
 			for i := 0; i < count; i++ {
 				memStatsStore.IncrementPlayCount(trackID)
 			}
 		}
 		log.Printf("Restored %d track play counts from backup", len(backup.GlobalStats))
+		
+		// Restore monthly stats (if available)
+		if backup.MonthlyStats != nil {
+			memStatsStore.mu.Lock()
+			for trackID, count := range backup.MonthlyStats {
+				memStatsStore.monthlyCounts[trackID] = count
+			}
+			memStatsStore.mu.Unlock()
+			log.Printf("Restored %d monthly play counts from backup", len(backup.MonthlyStats))
+		}
 	}
 
 	log.Printf("Successfully loaded backup from %v", backup.Timestamp)
@@ -131,10 +143,11 @@ func (s *MinIOBackupStore) SaveBackup() error {
 	objectName := "recommendations_backup.json"
 
 	backup := BackupData{
-		Tracks:       make(map[string]*models.Track),
-		UserProfiles: make(map[string]*models.UserProfile),
-		GlobalStats:  make(map[string]int),
-		Timestamp:    time.Now(),
+		Tracks:        make(map[string]*models.Track),
+		UserProfiles:  make(map[string]*models.UserProfile),
+		GlobalStats:   make(map[string]int),
+		MonthlyStats:  make(map[string]int),
+		Timestamp:     time.Now(),
 	}
 
 	// Collect tracks
@@ -153,6 +166,7 @@ func (s *MinIOBackupStore) SaveBackup() error {
 	// Collect global stats
 	if memStatsStore, ok := s.globalStatsStore.(*InMemoryGlobalStatsStore); ok {
 		backup.GlobalStats = memStatsStore.GetAllPlayCounts()
+		backup.MonthlyStats = memStatsStore.GetAllMonthlyPlayCounts()
 	}
 
 	// Serialize backup
@@ -170,8 +184,8 @@ func (s *MinIOBackupStore) SaveBackup() error {
 		return fmt.Errorf("failed to upload backup: %w", err)
 	}
 
-	log.Printf("Successfully saved backup: %d tracks, %d users, %d stats",
-		len(backup.Tracks), len(backup.UserProfiles), len(backup.GlobalStats))
+	log.Printf("Successfully saved backup: %d tracks, %d users, %d all-time stats, %d monthly stats",
+		len(backup.Tracks), len(backup.UserProfiles), len(backup.GlobalStats), len(backup.MonthlyStats))
 
 	return nil
 }

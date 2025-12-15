@@ -1,7 +1,9 @@
 package store
 
 import (
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/models"
 )
@@ -13,6 +15,7 @@ type TrackStore interface {
 	GetByGenre(genre string) []string
 	GetByArtist(artistID string) []string
 	GetAll() []*models.Track
+	GetNewReleases(limit int, days int) []string // Get new releases within last N days
 }
 
 // InMemoryTrackStore is an in-memory implementation of TrackStore
@@ -104,4 +107,51 @@ func (s *InMemoryTrackStore) GetAll() []*models.Track {
 		tracks = append(tracks, track)
 	}
 	return tracks
+}
+
+// GetNewReleases returns the newest tracks sorted by release date (most recent first)
+// If days > 0, only returns tracks released within the last N days
+// If days <= 0, returns all tracks sorted by release date
+func (s *InMemoryTrackStore) GetNewReleases(limit int, days int) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	cutoffTime := int64(0)
+	if days > 0 {
+		cutoffTime = now.AddDate(0, 0, -days).Unix()
+	}
+
+	type trackWithDate struct {
+		trackID   string
+		releaseTS int64
+	}
+
+	tracks := make([]trackWithDate, 0, len(s.tracks))
+	for _, track := range s.tracks {
+		// Filter by date if days > 0
+		if days > 0 && track.ReleaseTS < cutoffTime {
+			continue
+		}
+		tracks = append(tracks, trackWithDate{
+			trackID:   track.TrackID,
+			releaseTS: track.ReleaseTS,
+		})
+	}
+
+	// Sort by release date descending (newest first)
+	sort.Slice(tracks, func(i, j int) bool {
+		return tracks[i].releaseTS > tracks[j].releaseTS
+	})
+
+	result := make([]string, 0, limit)
+	maxLen := limit
+	if maxLen > len(tracks) {
+		maxLen = len(tracks)
+	}
+	for i := 0; i < maxLen; i++ {
+		result = append(result, tracks[i].trackID)
+	}
+
+	return result
 }

@@ -67,7 +67,7 @@ func main() {
 	// Initialize candidate generators
 	genreGenerator := generators.NewTopGenresGenerator(trackStore, globalStatsStore, 5, 50)
 	artistGenerator := generators.NewTopArtistsGenerator(trackStore, globalStatsStore, 5, 50)
-	fallbackGenerator := generators.NewFallbackGenerator(globalStatsStore, 100)
+	fallbackGenerator := generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 
 	// Initialize scorer
 	// NOTE: This is the ML replacement point. To use ML, replace with:
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := api.NewServer(cfg.HTTPPort, recEngine, userProfileStore, trackStore)
+	server := api.NewServer(cfg.HTTPPort, recEngine, userProfileStore, trackStore, globalStatsStore)
 
 	// Add ingest endpoints for testing without Kafka
 	server.AddIngestEndpoints(trackStore, userProfileStore, globalStatsStore)

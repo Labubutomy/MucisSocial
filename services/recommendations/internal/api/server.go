@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/engine"
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/models"
@@ -15,6 +17,7 @@ type Server struct {
 	engine           *engine.RecommendationEngine
 	userProfileStore store.UserProfileStore
 	trackStore       store.TrackStore
+	globalStatsStore store.GlobalStatsStore
 	router           *gin.Engine
 }
 
@@ -24,12 +27,14 @@ func NewServer(
 	recEngine *engine.RecommendationEngine,
 	userProfileStore store.UserProfileStore,
 	trackStore store.TrackStore,
+	globalStatsStore store.GlobalStatsStore,
 ) *Server {
 	s := &Server{
 		port:             port,
 		engine:           recEngine,
 		userProfileStore: userProfileStore,
 		trackStore:       trackStore,
+		globalStatsStore: globalStatsStore,
 	}
 
 	s.setupRoutes()
@@ -44,6 +49,8 @@ func (s *Server) setupRoutes() {
 
 	s.router.GET("/health", s.healthHandler)
 	s.router.POST("/recommendations", s.recommendationsHandler)
+	s.router.GET("/charts/top", s.chartsTopHandler)
+	s.router.GET("/tracks/new", s.newReleasesHandler)
 	s.router.GET("/debug/tracks", s.debugTracksHandler)
 	s.router.GET("/debug/users/:user_id", s.debugUserHandler)
 }
@@ -140,6 +147,79 @@ func (s *Server) debugUserHandler(c *gin.Context) {
 		"genre_listen_count":  profile.GenreListenCount,
 		"artist_listen_count": profile.ArtistListenCount,
 		"listened_tracks":     listenedTracks,
+	})
+}
+
+// ChartTrack represents a track in the charts
+type ChartTrack struct {
+	TrackID   string `json:"track_id"`
+	Position  int    `json:"position"`
+	PlayCount int    `json:"play_count"`
+}
+
+// ChartsResponse represents the charts API response
+type ChartsResponse struct {
+	Period    string       `json:"period"`
+	UpdatedAt string       `json:"updated_at"`
+	Tracks    []ChartTrack `json:"tracks"`
+}
+
+func (s *Server) chartsTopHandler(c *gin.Context) {
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	// Get top tracks for current month (cached)
+	trackIDs := s.globalStatsStore.GetTopTracksForMonth(limit)
+
+	// Build response with positions and play counts
+	tracks := make([]ChartTrack, 0, len(trackIDs))
+	for i, trackID := range trackIDs {
+		playCount := s.globalStatsStore.GetMonthlyPlayCount(trackID)
+		tracks = append(tracks, ChartTrack{
+			TrackID:   trackID,
+			Position:  i + 1,
+			PlayCount: playCount,
+		})
+	}
+
+	c.JSON(http.StatusOK, ChartsResponse{
+		Period:    "month",
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		Tracks:    tracks,
+	})
+}
+
+// NewReleasesResponse represents the new releases API response
+type NewReleasesResponse struct {
+	Tracks    []string `json:"tracks"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+func (s *Server) newReleasesHandler(c *gin.Context) {
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	days := 30 // Default: last 30 days
+	if d := c.Query("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
+			days = parsed
+		}
+	}
+
+	// Get new releases (sorted by release date, most recent first)
+	trackIDs := s.trackStore.GetNewReleases(limit, days)
+
+	c.JSON(http.StatusOK, NewReleasesResponse{
+		Tracks:    trackIDs,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
