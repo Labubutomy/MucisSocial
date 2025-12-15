@@ -4,19 +4,33 @@ import { Card } from '@shared/ui/card'
 import { Button } from '@shared/ui/button'
 import { PlaylistCard } from '@entities/playlist'
 import { routes } from '@shared/router'
-import { $user } from '@features/auth/model'
+import { $user, signOut } from '@features/auth/model'
 import { $myPlaylists, fetchMyPlaylistsFx } from '@pages/profile/model'
 
 export const ProfilePage = () => {
-  const { user, playlists, playlistsPending, goToPlaylists, goToCollection, goToCurations } =
-    useUnit({
-      user: $user,
-      playlists: $myPlaylists,
-      playlistsPending: fetchMyPlaylistsFx.pending,
-      goToPlaylists: routes.profilePlaylists.navigate,
-      goToCollection: routes.collection.navigate,
-      goToCurations: routes.curations.navigate,
-    })
+  const {
+    user,
+    playlists,
+    playlistsPending,
+    goToPlaylists,
+    goToCollection,
+    goToCurations,
+    goToSession,
+    goToRoutes,
+    goToCreateRoute,
+    handleSignOut,
+  } = useUnit({
+    user: $user,
+    playlists: $myPlaylists,
+    playlistsPending: fetchMyPlaylistsFx.pending,
+    goToPlaylists: routes.profilePlaylists.navigate,
+    goToCollection: routes.collection.navigate,
+    goToCurations: routes.curations.navigate,
+    goToSession: routes.session.navigate,
+    goToRoutes: routes.routes.navigate,
+    goToCreateRoute: routes.routeCreate.navigate,
+    handleSignOut: signOut,
+  })
 
   if (!user) {
     return (
@@ -43,6 +57,32 @@ export const ProfilePage = () => {
           onSelectArtist={artist => console.info('Выбрать артиста', artist)}
         />
       </div>
+
+      <Card padding="lg" className="space-y-4 bg-secondary/20">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Button
+            variant="outline"
+            onClick={() => goToSession({ params: {}, query: {} })}
+            className="w-full"
+          >
+            Слушать вместе
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => goToRoutes({ params: {}, query: {} })}
+            className="w-full"
+          >
+            Маршруты
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => goToCreateRoute({ params: {}, query: {} })}
+            className="w-full"
+          >
+            Создать маршрут
+          </Button>
+        </div>
+      </Card>
 
       <Card padding="lg" className="space-y-6 bg-secondary/20">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -152,6 +192,14 @@ export const ProfilePage = () => {
           )}
         </div>
       </Card>
+
+      <Button
+        variant="outline"
+        onClick={handleSignOut}
+        className="w-full border-destructive/40 text-destructive hover:bg-destructive/10"
+      >
+        Выйти
+      </Button>
     </div>
   )
 }

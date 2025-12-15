@@ -12,6 +12,7 @@ import {
   sessionPlayTriggered,
   sessionPauseTriggered,
   sessionSeekTriggered,
+  sessionSkipTrackTriggered,
   sessionTrackSelected,
 } from '@features/session'
 import { $isAuthenticated, $user } from '@features/auth'
@@ -22,6 +23,8 @@ import type { TrackDetail } from '@widgets/track'
 import { fetchStreamMetadata } from '@features/player/api'
 import { TrackHero } from '@widgets/track'
 import { getSessionAudio } from '@features/session/lib/audio'
+import { QueueList } from '@widgets/queue'
+import { trackAddedToQueue } from '@features/queue'
 
 const generateRoomId = () => `room-${Math.random().toString(36).slice(2, 8)}`
 
@@ -55,6 +58,7 @@ export const SessionPage = () => {
     playAction,
     pauseAction,
     seekAction,
+    skipAction,
     selectTrackAction,
   } = useUnit({
     roomParams: routes.sessionRoom.$params,
@@ -75,6 +79,7 @@ export const SessionPage = () => {
     playAction: sessionPlayTriggered,
     pauseAction: sessionPauseTriggered,
     seekAction: sessionSeekTriggered,
+    skipAction: sessionSkipTrackTriggered,
     selectTrackAction: sessionTrackSelected,
   })
 
@@ -366,6 +371,7 @@ export const SessionPage = () => {
                 onAddToPlaylist={() => console.info('Add track to playlist', trackDetail.id)}
                 onGoToArtist={() => console.info('Go to artist', trackDetail.artist.id)}
                 onGoToAlbum={() => console.info('Go to album', trackDetail.album.id)}
+                onSkip={skipAction}
                 currentTime={currentTime}
                 duration={trackDetail.duration ?? 0}
                 isBuffering={false}
@@ -417,11 +423,13 @@ export const SessionPage = () => {
               </ul>
             </div>
 
+            <QueueList />
+
             <div className="rounded-3xl border border-border/60 bg-secondary/20 p-6 space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">Выбор трека</h3>
                 <p className="text-sm text-muted-foreground">
-                  Найдите трек и нажмите "Включить" для всех участников
+                  Найдите трек и нажмите "Включить" для всех участников или добавьте в очередь
                 </p>
               </div>
               <div className="space-y-3">
@@ -462,33 +470,46 @@ export const SessionPage = () => {
                             {track.artist.name}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!connected) return
-                            try {
-                              const streamMetadata = await fetchStreamMetadata({
-                                trackId: track.id,
-                                artistId: track.artist.id,
-                              })
-                              selectTrackAction({
-                                trackId: track.id,
-                                title: track.title,
-                                artist: track.artist.name,
-                                duration: track.duration ?? 0,
-                                cdnUrl: streamMetadata.masterUrl,
-                              })
-                              setSearchQuery('')
-                              setSearchResults([])
-                            } catch (error) {
-                              console.error('Failed to get stream URL', error)
-                            }
-                          }}
-                          disabled={!connected}
-                          className="rounded-full bg-primary/90 px-4 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Включить
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              trackAddedToQueue(track.id)
+                            }}
+                            disabled={!connected}
+                            className="rounded-full border border-border/60 bg-secondary/20 px-3 py-1.5 text-xs font-semibold transition hover:bg-secondary/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Добавить в очередь"
+                          >
+                            + Очередь
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!connected) return
+                              try {
+                                const streamMetadata = await fetchStreamMetadata({
+                                  trackId: track.id,
+                                  artistId: track.artist.id,
+                                })
+                                selectTrackAction({
+                                  trackId: track.id,
+                                  title: track.title,
+                                  artist: track.artist.name,
+                                  duration: track.duration ?? 0,
+                                  cdnUrl: streamMetadata.masterUrl,
+                                })
+                                setSearchQuery('')
+                                setSearchResults([])
+                              } catch (error) {
+                                console.error('Failed to get stream URL', error)
+                              }
+                            }}
+                            disabled={!connected}
+                            className="rounded-full bg-primary/90 px-4 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Включить
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>

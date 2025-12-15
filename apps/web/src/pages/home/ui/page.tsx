@@ -5,18 +5,36 @@ import { TrackFeed } from '@widgets/home'
 import { $currentTrack, $isPlaying, playbackToggled, trackQueued } from '@features/player'
 import type { Track } from '@entities/track'
 import { routes } from '@shared/router'
-import { $activeTab, $tracks, tabChanged, trackLikedToggled, type FeedTab } from '@pages/home/model'
+import {
+  $activeTab,
+  $tracks,
+  $trendingPending,
+  $trendingError,
+  $newPending,
+  $newError,
+  $recommendationsPending,
+  $recommendationsError,
+  tabChanged,
+  trackLikedToggled,
+  type FeedTab,
+} from '@pages/home/model'
 
 const tabItems: TabItem[] = [
   { value: 'trending', label: 'В тренде' },
-  { value: 'popular', label: 'Популярное' },
   { value: 'new', label: 'Новое' },
+  { value: 'recommended', label: 'Рекомендации' },
 ]
 
 export const HomePage = () => {
   const {
     tracks,
     activeTab,
+    trendingPending,
+    trendingError,
+    newPending,
+    newError,
+    recommendationsPending,
+    recommendationsError,
     currentTrack,
     isPlaying,
     enqueueTrack,
@@ -27,6 +45,12 @@ export const HomePage = () => {
   } = useUnit({
     tracks: $tracks,
     activeTab: $activeTab,
+    trendingPending: $trendingPending,
+    trendingError: $trendingError,
+    newPending: $newPending,
+    newError: $newError,
+    recommendationsPending: $recommendationsPending,
+    recommendationsError: $recommendationsError,
     currentTrack: $currentTrack,
     isPlaying: $isPlaying,
     enqueueTrack: trackQueued,
@@ -75,17 +99,80 @@ export const HomePage = () => {
         <Tabs value={activeTab} onChange={value => changeTab(value as FeedTab)} items={tabItems} />
       </header>
 
-      <TrackFeed
-        title="Треки"
-        subtitle="Свежие композиции под ваше настроение"
-        tracks={tracks}
-        activeTrackId={currentTrack?.id}
-        isPlaying={isPlaying && Boolean(currentTrack)}
-        onPlayToggle={handlePlayToggle}
-        onLike={handleLike}
-        onShare={handleShare}
-        onOpen={handleOpen}
-      />
+      {(() => {
+        // Loading states
+        if (
+          (activeTab === 'trending' && trendingPending) ||
+          (activeTab === 'new' && newPending) ||
+          (activeTab === 'recommended' && recommendationsPending)
+        ) {
+          return (
+            <div className="rounded-2xl border border-border/60 bg-secondary/20 px-4 py-10 text-center text-sm text-muted-foreground">
+              Загрузка...
+            </div>
+          )
+        }
+
+        // Error states
+        if (activeTab === 'trending' && trendingError) {
+          return (
+            <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-10 text-center text-sm text-destructive">
+              {trendingError}
+            </div>
+          )
+        }
+        if (activeTab === 'new' && newError) {
+          return (
+            <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-10 text-center text-sm text-destructive">
+              {newError}
+            </div>
+          )
+        }
+        if (activeTab === 'recommended' && recommendationsError) {
+          return (
+            <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-10 text-center text-sm text-destructive">
+              {recommendationsError}
+            </div>
+          )
+        }
+
+        // Empty states
+        if (tracks.length === 0) {
+          return (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/30 px-4 py-10 text-center text-sm text-muted-foreground">
+              {activeTab === 'trending' && 'Пока нет данных для топ чартов'}
+              {activeTab === 'new' && 'Пока нет новинок'}
+              {activeTab === 'recommended' && 'Пока нет рекомендаций'}
+            </div>
+          )
+        }
+
+        // Content
+        const titles = {
+          trending: 'В тренде',
+          new: 'Новое',
+          recommended: 'Рекомендации для вас',
+        }
+        const subtitles = {
+          trending: 'Самые популярные треки за месяц',
+          new: 'Треки отсортированные в обратном порядке добавления',
+          recommended: 'Персональные рекомендации на основе ваших предпочтений',
+        }
+
+        return (
+          <TrackFeed
+            title={titles[activeTab]}
+            subtitle={subtitles[activeTab]}
+            tracks={tracks}
+            activeTrackId={currentTrack?.id}
+            isPlaying={isPlaying && Boolean(currentTrack)}
+            onPlayToggle={handlePlayToggle}
+            onLike={handleLike}
+            onShare={handleShare}
+            onOpen={handleOpen}
+          />
+        )
+      })()}
     </div>
   )
 }

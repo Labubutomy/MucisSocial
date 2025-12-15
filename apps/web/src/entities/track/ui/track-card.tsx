@@ -3,6 +3,7 @@ import type { Track } from '@entities/track/model/types'
 import { cn } from '@shared/lib/cn'
 import { Card } from '@shared/ui/card'
 import { IconButton } from '@shared/ui/icon-button'
+import { AddToQueueButton } from '@widgets/queue'
 
 export interface TrackCardProps {
   track: Track
@@ -115,6 +116,7 @@ export const TrackCard = memo(
               <path d="m12 21-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3a4.5 4.5 0 0 1 3.57 1.75A4.5 4.5 0 0 1 14.64 3C17.72 3 20.14 5.42 20.14 8.5c0 3.78-3.4 6.86-8.55 11.18L12 21Z" />
             </svg>
           </IconButton>
+          <AddToQueueButton trackId={track.id} />
           <IconButton aria-label="Поделиться треком" onClick={handleShare}>
             <svg
               xmlns="http://www.w3.org/2000/svg"

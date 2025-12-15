@@ -8,9 +8,20 @@ import {
   startSessionPlayback,
   pauseSessionPlayback,
   getSessionAudio,
+  setTrackEndedCallback,
+  seekSessionAudio,
 } from '../lib/audio'
 import { $user } from '@features/auth'
 import { playbackStopped, playbackToggled, seekRequested } from '@features/player'
+import {
+  queueContextSet,
+  $queueTrackIds,
+  loadQueueFx,
+  removeTrackFromQueueFx,
+  trackFromQueueSelectedForSession,
+} from '@features/queue'
+import { fetchTrackDetail } from '@entities/track/api'
+import { fetchStreamMetadata } from '@features/player/api'
 
 type SessionRole = 'host' | 'guest'
 
@@ -100,6 +111,7 @@ export const sessionRoomLeaveRequested = createEvent()
 export const sessionPlayTriggered = createEvent()
 export const sessionPauseTriggered = createEvent()
 export const sessionSeekTriggered = createEvent<number>()
+export const sessionSkipTrackTriggered = createEvent()
 export const sessionTrackSelected = createEvent<{
   trackId: string
   title: string
@@ -243,6 +255,80 @@ export const $sessionShareLink = createStore<string | null>(null)
 
 export const $sessionHasRoom = $sessionRoomId.map(Boolean)
 
+// Short polling for queue updates in session
+const queuePollInterval = 2000 // 2 seconds
+let queuePollIntervalId: ReturnType<typeof setInterval> | null = null
+
+const startQueuePolling = () => {
+  if (queuePollIntervalId) {
+    return // Already polling
+  }
+
+  const pollQueue = () => {
+    const roomId = $sessionRoomId.getState()
+
+    // Only poll if we're in a session
+    if (roomId) {
+      loadQueueFx({ type: 'session' as const, roomId })
+    }
+  }
+
+  // Poll immediately
+  pollQueue()
+
+  // Then poll periodically
+  queuePollIntervalId = setInterval(pollQueue, queuePollInterval)
+  console.log('[Session] Started queue polling')
+}
+
+const stopQueuePolling = () => {
+  if (queuePollIntervalId) {
+    clearInterval(queuePollIntervalId)
+    queuePollIntervalId = null
+    console.log('[Session] Stopped queue polling')
+  }
+}
+
+// Start polling when connected to a room
+if (typeof window !== 'undefined') {
+  // Watch for connection changes
+  $sessionConnected.watch(connected => {
+    const roomId = $sessionRoomId.getState()
+    if (connected && roomId) {
+      startQueuePolling()
+    } else {
+      stopQueuePolling()
+    }
+  })
+
+  // Also watch for room ID changes
+  $sessionRoomId.watch(roomId => {
+    const connected = $sessionConnected.getState()
+    if (connected && roomId) {
+      startQueuePolling()
+    } else {
+      stopQueuePolling()
+    }
+  })
+
+  // Stop polling when leaving a room
+  sessionRoomLeaveRequested.watch(() => {
+    stopQueuePolling()
+  })
+}
+
+// Also reload queue when sync_state is received (in case queue changed on server)
+sample({
+  clock: syncStateReceived,
+  source: $sessionRoomId,
+  filter: Boolean,
+  fn: roomId => ({
+    type: 'session' as const,
+    roomId: roomId!,
+  }),
+  target: loadQueueFx,
+})
+
 sample({
   clock: sessionRoomJoinRequested,
   source: $user,
@@ -264,6 +350,248 @@ sample({
   target: playbackStopped,
 })
 
+// Set queue context to session when joining a room
+sample({
+  clock: connectToRoomFx.doneData,
+  fn: ({ roomId }) => ({
+    type: 'session' as const,
+    roomId,
+  }),
+  target: queueContextSet,
+})
+
+// Load queue when joining a room
+sample({
+  clock: connectToRoomFx.doneData,
+  fn: ({ roomId }) => ({
+    type: 'session' as const,
+    roomId,
+  }),
+  target: loadQueueFx,
+})
+
+// Event for track ending in session
+const sessionTrackEnded = createEvent()
+
+// Set up track ended callback
+if (typeof window !== 'undefined') {
+  setTrackEndedCallback(() => {
+    sessionTrackEnded()
+  })
+}
+
+// Effect to load track by ID and get stream metadata
+const loadTrackByIdFx = createEffect(async (trackId: string) => {
+  const track = await fetchTrackDetail(trackId)
+  // Fetch stream metadata to get CDN URL
+  if (track.artist?.id) {
+    try {
+      const parseBitrates = (qualities?: string[]): number[] | undefined => {
+        if (!qualities) return undefined
+        const values = Array.from(
+          new Set(
+            qualities
+              .map(item => {
+                const digits = item.replace(/\D/g, '')
+                if (!digits) return null
+                const numeric = Number(digits)
+                if (!numeric) return null
+                return numeric < 1000 ? numeric * 1000 : numeric
+              })
+              .filter((value): value is number => Boolean(value))
+          )
+        )
+        return values.length ? values : undefined
+      }
+
+      // Type assertion for track.stream since TrackDetail extends Track
+      const streamInfo = track.stream as { qualities?: string[] } | undefined
+      const streamQualities = streamInfo?.qualities
+      const bitrates = parseBitrates(streamQualities)
+      const streamMetadata = await fetchStreamMetadata({
+        trackId: track.id,
+        artistId: track.artist.id,
+        bitrates,
+      })
+      return { track, cdnUrl: streamMetadata.masterUrl }
+    } catch (error) {
+      console.error('[Session] Failed to fetch stream metadata:', error)
+      return { track, cdnUrl: '' }
+    }
+  }
+  return { track, cdnUrl: '' }
+})
+
+// Effect to remove tracks until selected one in session
+const removeTracksUntilSessionFx = createEffect(
+  async ({ trackIds, roomId }: { trackIds: string[]; roomId: string }) => {
+    const context = { type: 'session' as const, roomId }
+    await Promise.all(trackIds.map(trackId => removeTrackFromQueueFx({ trackId, context })))
+    return { trackIds, roomId }
+  }
+)
+
+// Flag to track if we should auto-play next track after queue reload
+const $shouldAutoPlayNext = createStore(false)
+  .on(sessionTrackEnded, () => true)
+  .on(sessionSkipTrackTriggered, () => true)
+  .reset([sessionTrackSelected])
+
+// When track ends, reload queue (track will be removed after next track starts)
+sample({
+  clock: sessionTrackEnded,
+  source: { sessionState: $sessionState, roomId: $sessionRoomId },
+  filter: ({ sessionState, roomId }) => Boolean(sessionState?.currentTrack) && Boolean(roomId),
+  fn: ({ roomId }) => ({
+    type: 'session' as const,
+    roomId: roomId!,
+  }),
+  target: loadQueueFx,
+})
+
+// When skip track is triggered, first remove current track from queue, then reload queue
+sample({
+  clock: sessionSkipTrackTriggered,
+  source: { sessionState: $sessionState, roomId: $sessionRoomId },
+  filter: ({ sessionState, roomId }) => Boolean(sessionState?.currentTrack) && Boolean(roomId),
+  fn: ({ sessionState, roomId }) => ({
+    trackId: sessionState!.currentTrack!.trackId,
+    context: { type: 'session' as const, roomId: roomId! },
+  }),
+  target: removeTrackFromQueueFx,
+})
+
+// After removing skipped track, reload queue
+sample({
+  clock: removeTrackFromQueueFx.done,
+  source: { roomId: $sessionRoomId, shouldAutoPlay: $shouldAutoPlayNext },
+  filter: ({ roomId, shouldAutoPlay }) => Boolean(roomId) && shouldAutoPlay,
+  fn: ({ roomId }) => ({
+    type: 'session' as const,
+    roomId: roomId!,
+  }),
+  target: loadQueueFx,
+})
+
+// After queue reload (after track ended/skipped), play first track if available
+// BUT only if we should auto-play (track ended or skipped)
+sample({
+  clock: loadQueueFx.doneData,
+  source: {
+    queue: $queueTrackIds,
+    sessionState: $sessionState,
+    shouldAutoPlay: $shouldAutoPlayNext,
+  },
+  filter: ({ queue, sessionState, shouldAutoPlay }) => {
+    // Filter out current track from queue if it's still there
+    const currentTrackId = sessionState?.currentTrack?.trackId
+    const filteredQueue = currentTrackId ? queue.filter(id => id !== currentTrackId) : queue
+    return filteredQueue.length > 0 && Boolean(sessionState) && shouldAutoPlay
+  },
+  fn: ({ queue, sessionState }) => {
+    // Get first track that is not the current one
+    const currentTrackId = sessionState?.currentTrack?.trackId
+    const filteredQueue = currentTrackId ? queue.filter(id => id !== currentTrackId) : queue
+    return filteredQueue[0] || queue[0]
+  },
+  target: loadTrackByIdFx,
+})
+
+// After loading track from queue, select it to play
+sample({
+  clock: loadTrackByIdFx.doneData,
+  fn: ({ track, cdnUrl }) => ({
+    trackId: track.id,
+    title: track.title,
+    artist: track.artist.name,
+    duration: track.duration ?? 0,
+    cdnUrl,
+  }),
+  target: sessionTrackSelected,
+})
+
+// After track is selected from queue (auto-play scenario), remove it from queue
+// This happens when track ends or is skipped, and next track is taken from queue
+sample({
+  clock: sessionTrackSelected,
+  source: { queue: $queueTrackIds, roomId: $sessionRoomId, shouldAutoPlay: $shouldAutoPlayNext },
+  filter: ({ queue, roomId, shouldAutoPlay }, track) => {
+    // Remove track from queue if:
+    // 1. It's an auto-play scenario (track ended or skipped)
+    // 2. Track is in the queue
+    // 3. We're in a session
+    return shouldAutoPlay && queue.includes(track.trackId) && Boolean(roomId)
+  },
+  fn: ({ roomId }, track) => ({
+    trackId: track.trackId,
+    context: { type: 'session' as const, roomId: roomId! },
+  }),
+  target: removeTrackFromQueueFx,
+})
+
+// Reload queue after removing track (but don't auto-play unless it was ended/skipped)
+// This is handled by the flag $shouldAutoPlayNext
+sample({
+  clock: removeTrackFromQueueFx.done,
+  source: { roomId: $sessionRoomId, shouldAutoPlay: $shouldAutoPlayNext },
+  filter: ({ roomId, shouldAutoPlay }) => Boolean(roomId) && !shouldAutoPlay,
+  fn: ({ roomId }) => ({
+    type: 'session' as const,
+    roomId: roomId!,
+  }),
+  target: loadQueueFx,
+})
+
+// When track is selected from queue in session, remove tracks before it and play it
+sample({
+  clock: trackFromQueueSelectedForSession,
+  source: { queue: $queueTrackIds, roomId: $sessionRoomId },
+  filter: ({ queue, roomId }, trackId: string) => queue.includes(trackId) && Boolean(roomId),
+  fn: ({ queue, roomId }, trackId: string) => {
+    const trackIndex = queue.findIndex((id: string) => id === trackId)
+    const tracksToRemove = queue.slice(0, trackIndex + 1)
+    return { trackIds: tracksToRemove, roomId: roomId! }
+  },
+  target: removeTracksUntilSessionFx,
+})
+
+// After removing tracks, load the selected track and play it
+sample({
+  clock: removeTracksUntilSessionFx.doneData,
+  fn: ({ trackIds }) => trackIds[trackIds.length - 1], // Get the last track (the selected one)
+  target: loadTrackByIdFx,
+})
+
+// Reload queue after removing tracks for selected track
+sample({
+  clock: removeTracksUntilSessionFx.done,
+  source: $sessionRoomId,
+  filter: Boolean,
+  fn: roomId => ({
+    type: 'session' as const,
+    roomId: roomId!,
+  }),
+  target: loadQueueFx,
+})
+
+// When track is added to queue in session, DO NOT auto-play it
+// Tracks should only start playing when:
+// 1. User explicitly selects a track from queue
+// 2. Track ends and next track is taken from queue
+// 3. User clicks play on a track
+
+// Reset queue context when leaving a room
+sample({
+  clock: sessionRoomLeaveRequested,
+  source: $user,
+  filter: Boolean,
+  fn: user => ({
+    type: 'user' as const,
+    userId: user.id,
+  }),
+  target: queueContextSet,
+})
+
 sample({
   clock: sessionRoomLeaveRequested,
   source: { roomId: $sessionRoomId, user: $user },
@@ -277,11 +605,26 @@ sample({
 
 sample({
   clock: syncStateReceived,
+  filter: state => {
+    // Only apply playback state if there's a track to play
+    // State itself should always be updated in $sessionState store
+    return Boolean(state.currentTrack && state.currentTrack.cdnUrl)
+  },
   fn: state => {
     console.log('[Session] Applying sync state:', state)
     return state
   },
   target: applySyncFx,
+})
+
+// When sync_state arrives with currentTrack = null, stop playback
+sample({
+  clock: syncStateReceived,
+  filter: state => !state.currentTrack || !state.currentTrack.cdnUrl,
+  fn: () => {
+    console.log('[Session] Sync state received with no track, stopping playback')
+    stopSessionAudio()
+  },
 })
 
 // When connecting to room, apply current state to restore playback (only if track exists)
@@ -293,6 +636,16 @@ sample({
     return payload.room
   },
   target: applySyncFx,
+})
+
+// When connecting to room without a track, stop any existing playback
+sample({
+  clock: connectToRoomFx.doneData,
+  filter: payload => !payload.room?.currentTrack,
+  fn: () => {
+    console.log('[Session] Room connected without track, stopping playback')
+    stopSessionAudio()
+  },
 })
 
 // When user clicks Play button, start playback locally and send action to server
@@ -333,12 +686,61 @@ sample({
 
 sample({
   clock: sessionSeekTriggered,
-  fn: seconds => ({ action: 'seek' as const, payload: { position: seconds } }),
+  fn: seconds => {
+    // Apply seek locally first
+    seekSessionAudio(seconds)
+    return { action: 'seek' as const, payload: { position: seconds } }
+  },
   target: sessionActionRequested,
 })
 
+// When track is selected, apply it locally first, then send to server
+const applyTrackLocallyFx = createEffect(
+  async (track: {
+    trackId: string
+    title: string
+    artist: string
+    duration: number
+    cdnUrl: string
+  }) => {
+    // Apply track state locally to start playback immediately
+    const roomState: RoomState = {
+      roomId: $sessionRoomId.getState() || '',
+      currentTrack: {
+        trackId: track.trackId,
+        title: track.title,
+        artist: track.artist,
+        duration: track.duration,
+        cdnUrl: track.cdnUrl,
+      },
+      position: 0,
+      isPlaying: true, // Start playing immediately
+      participants: [],
+      queue: [],
+      lastAction: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    await applyPlaybackState(roomState)
+    return track
+  }
+)
+
 sample({
   clock: sessionTrackSelected,
+  filter: track => {
+    // Don't send change_track if cdnUrl is empty - track won't play
+    if (!track.cdnUrl || track.cdnUrl.trim() === '') {
+      console.warn('[Session] Cannot select track without CDN URL:', track.trackId)
+      return false
+    }
+    return true
+  },
+  target: applyTrackLocallyFx,
+})
+
+sample({
+  clock: applyTrackLocallyFx.doneData,
   fn: track => {
     console.log('[Session] Track selected, preparing action:', {
       trackId: track.trackId,
@@ -346,6 +748,7 @@ sample({
       artist: track.artist,
       cdnUrl: track.cdnUrl,
     })
+    // Server automatically sets isPlaying = true when change_track is received
     return {
       action: 'change_track' as const,
       payload: {
