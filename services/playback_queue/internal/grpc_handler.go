@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"strings"
 
 	queuepb "github.com/Labubutomy/MucisSocial/services/playback_queue/api"
 	"github.com/google/uuid"
@@ -148,10 +149,25 @@ func parseContext(ref *queuepb.ContextRef) (ContextRef, error) {
 	if ref == nil || ref.GetContextType() == "" || ref.GetContextId() == "" {
 		return ContextRef{}, ErrBadRequest
 	}
-	id, err := uuid.Parse(ref.GetContextId())
-	if err != nil {
-		return ContextRef{}, ErrBadRequest
+	
+	var id uuid.UUID
+	var err error
+	
+	// For session context, roomId can be any string, so we use deterministic UUID generation
+	// For other contexts (user, group), context_id should be a valid UUID
+	if strings.EqualFold(ref.GetContextType(), "session") {
+		// Generate deterministic UUID from roomId string using SHA-1 hash
+		// This allows any string to be used as roomId while maintaining UUID format
+		namespace := uuid.NameSpaceURL
+		id = uuid.NewSHA1(namespace, []byte(ref.GetContextId()))
+	} else {
+		// For user and group contexts, require valid UUID
+		id, err = uuid.Parse(ref.GetContextId())
+		if err != nil {
+			return ContextRef{}, ErrBadRequest
+		}
 	}
+	
 	return ContextRef{ContextType: ref.GetContextType(), ContextID: id}, nil
 }
 
