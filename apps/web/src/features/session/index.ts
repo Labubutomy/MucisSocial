@@ -11,6 +11,7 @@ export {
   sessionPlayTriggered,
   sessionPauseTriggered,
   sessionSeekTriggered,
+  sessionSkipTrackTriggered,
   sessionTrackSelected,
 } from './model'
 

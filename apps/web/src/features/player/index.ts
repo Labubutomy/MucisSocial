@@ -11,4 +11,5 @@ export {
   playbackFailed,
   seekRequested,
   trackQueued,
+  skipTrackRequested,
 } from './model/index'

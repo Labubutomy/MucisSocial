@@ -12,6 +12,8 @@ export interface TrackHeroProps {
   onAddToPlaylist: (track: TrackDetail) => void
   onGoToArtist: (artistId: string) => void
   onGoToAlbum: (albumId: string) => void
+  onSkip?: () => void
+  onOpenQueue?: () => void
   currentTime: number
   duration: number
   isBuffering?: boolean
@@ -34,6 +36,8 @@ export const TrackHero = ({
   onAddToPlaylist,
   onGoToArtist,
   onGoToAlbum,
+  onSkip,
+  onOpenQueue,
   currentTime,
   duration,
   isBuffering = false,
@@ -122,6 +126,40 @@ export const TrackHero = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
+          {onOpenQueue && (
+            <IconButton
+              size="lg"
+              variant="muted"
+              onClick={onOpenQueue}
+              aria-label="Открыть очередь"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 5h16M4 9h16M4 13h16M4 17h16" />
+              </svg>
+            </IconButton>
+          )}
+          {onSkip && (
+            <IconButton size="lg" variant="muted" onClick={onSkip} aria-label="Пропустить трек">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="m5 4 10 8-10 8V4Z" />
+                <path d="M19 5v14" />
+              </svg>
+            </IconButton>
+          )}
           <IconButton
             size="lg"
             variant="muted"

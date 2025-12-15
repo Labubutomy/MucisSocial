@@ -141,38 +141,77 @@ export const fetchTrackDetail = async (trackId: string) => {
   }
 }
 
-export const fetchTrackRecommendations = async () => {
-  // Временно возвращаем список всех треков вместо рекомендаций
-  const response = await gatewayClient.get<GatewayTracksResponse>('/api/v1/tracks', {
-    params: {
-      limit: 12,
-      offset: 0,
-    },
-  })
+// Recommendation service response format
+interface RecommendationsResponse {
+  tracks: string[] // Array of track IDs
+}
 
-  // Загружаем имена артистов для всех треков
-  const tracksWithArtists = await Promise.all(
-    response.data.tracks.map(async track => {
-      const mappedTrack = mapGatewayTrack(track)
+export interface RecommendationOptions {
+  limit?: number
+  excludeExplicit?: boolean
+}
 
-      // Загружаем имя артиста, если есть artist_id
-      if (mappedTrack.artist.id) {
-        try {
-          const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
-            `/api/v1/artists/${mappedTrack.artist.id}`
-          )
-          mappedTrack.artist.name = artistResponse.data.name
-        } catch (error) {
-          console.warn(`Failed to fetch artist ${mappedTrack.artist.id}:`, error)
-          // Оставляем 'Unknown', если не удалось загрузить
-        }
-      }
-
-      return mappedTrack
+export const fetchTrackRecommendations = async (
+  options?: RecommendationOptions
+): Promise<Track[]> => {
+  try {
+    // Вызов Gateway API для получения рекомендаций
+    const response = await gatewayClient.get<RecommendationsResponse>('/api/v1/recommendations', {
+      params: {
+        limit: options?.limit ?? 12,
+        exclude_explicit: options?.excludeExplicit ?? false,
+      },
     })
-  )
 
-  return tracksWithArtists
+    const trackIds = response.data.tracks
+
+    if (trackIds.length === 0) {
+      return []
+    }
+
+    // Загружаем полную информацию о каждом треке
+    const tracksWithArtists = await Promise.all(
+      trackIds.map(async trackId => {
+        try {
+          const trackResponse = await gatewayClient.get<GatewayTrackDetailResponse>(
+            `/api/v1/tracks/${trackId}`
+          )
+          const track = trackResponse.data
+
+          // Получаем информацию об артисте
+          let artist = { id: '', name: 'Unknown' }
+          if (track.artist_ids && track.artist_ids.length > 0) {
+            try {
+              const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+                `/api/v1/artists/${track.artist_ids[0]}`
+              )
+              artist = {
+                id: artistResponse.data.id,
+                name: artistResponse.data.name,
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch artist ${track.artist_ids[0]}:`, error)
+            }
+          }
+
+          const mappedTrack = mapGatewayTrack(track)
+          mappedTrack.artist = artist
+
+          return mappedTrack
+        } catch (error) {
+          console.warn(`Failed to fetch track ${trackId}:`, error)
+          return null
+        }
+      })
+    )
+
+    // Фильтруем null значения (треки, которые не удалось загрузить)
+    return tracksWithArtists.filter((track): track is Track => track !== null)
+  } catch (error) {
+    console.error('Failed to fetch recommendations:', error)
+    // Возвращаем пустой массив при ошибке, чтобы не ломать UI
+    return []
+  }
 }
 
 export const toggleTrackLike = async (trackId: string, isLiked: boolean) => {
@@ -224,4 +263,147 @@ export const searchTracks = async (query: string, limit = 20) => {
   )
 
   return tracksWithArtists
+}
+
+// Charts API response format
+interface ChartTrack {
+  track_id: string
+  position: number
+  play_count: number
+}
+
+interface ChartsResponse {
+  period: string
+  updated_at: string
+  tracks: ChartTrack[]
+}
+
+// New releases API response format
+interface NewReleasesResponse {
+  tracks: string[] // Array of track IDs
+  updated_at: string
+}
+
+/**
+ * Fetches top charts for the current month
+ * @param limit Maximum number of tracks to return (default: 50, max: 100)
+ * @returns Array of tracks with chart positions
+ */
+export const fetchTopCharts = async (limit: number = 50): Promise<Track[]> => {
+  try {
+    const response = await gatewayClient.get<ChartsResponse>('/api/v1/charts/top', {
+      params: {
+        limit: Math.min(limit, 100), // Cap at 100
+      },
+    })
+
+    const chartTracks = response.data.tracks
+    if (chartTracks.length === 0) {
+      return []
+    }
+
+    // Load full track details for each chart entry
+    const tracksWithArtists = await Promise.all(
+      chartTracks.map(async chartEntry => {
+        try {
+          const trackResponse = await gatewayClient.get<GatewayTrackDetailResponse>(
+            `/api/v1/tracks/${chartEntry.track_id}`
+          )
+          const track = trackResponse.data
+
+          // Get artist information
+          let artist = { id: '', name: 'Unknown' }
+          if (track.artist_ids && track.artist_ids.length > 0) {
+            try {
+              const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+                `/api/v1/artists/${track.artist_ids[0]}`
+              )
+              artist = {
+                id: artistResponse.data.id,
+                name: artistResponse.data.name,
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch artist ${track.artist_ids[0]}:`, error)
+            }
+          }
+
+          const mappedTrack = mapGatewayTrack(track)
+          mappedTrack.artist = artist
+
+          return mappedTrack
+        } catch (error) {
+          console.warn(`Failed to fetch track ${chartEntry.track_id}:`, error)
+          return null
+        }
+      })
+    )
+
+    return tracksWithArtists.filter((track): track is Track => track !== null)
+  } catch (error) {
+    console.error('Failed to fetch top charts:', error)
+    return []
+  }
+}
+
+/**
+ * Fetches new releases (recently released tracks)
+ * @param limit Maximum number of tracks to return (default: 50, max: 100)
+ * @param days Number of days to look back (default: 30, max: 365)
+ * @returns Array of tracks sorted by release date (newest first)
+ */
+export const fetchNewReleases = async (limit: number = 50, days: number = 30): Promise<Track[]> => {
+  try {
+    const response = await gatewayClient.get<NewReleasesResponse>('/api/v1/tracks/new', {
+      params: {
+        limit: Math.min(limit, 100), // Cap at 100
+        days: Math.min(days, 365), // Cap at 365
+      },
+    })
+
+    const trackIds = response.data.tracks
+    if (trackIds.length === 0) {
+      return []
+    }
+
+    // Load full track details for each new release
+    const tracksWithArtists = await Promise.all(
+      trackIds.map(async trackId => {
+        try {
+          const trackResponse = await gatewayClient.get<GatewayTrackDetailResponse>(
+            `/api/v1/tracks/${trackId}`
+          )
+          const track = trackResponse.data
+
+          // Get artist information
+          let artist = { id: '', name: 'Unknown' }
+          if (track.artist_ids && track.artist_ids.length > 0) {
+            try {
+              const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+                `/api/v1/artists/${track.artist_ids[0]}`
+              )
+              artist = {
+                id: artistResponse.data.id,
+                name: artistResponse.data.name,
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch artist ${track.artist_ids[0]}:`, error)
+            }
+          }
+
+          const mappedTrack = mapGatewayTrack(track)
+          mappedTrack.artist = artist
+
+          return mappedTrack
+        } catch (error) {
+          console.warn(`Failed to fetch track ${trackId}:`, error)
+          return null
+        }
+      })
+    )
+
+    return tracksWithArtists.filter((track): track is Track => track !== null)
+  } catch (error) {
+    console.error('Failed to fetch new releases:', error)
+    return []
+  }
 }

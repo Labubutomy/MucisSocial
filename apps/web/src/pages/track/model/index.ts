@@ -10,8 +10,8 @@ const fetchTrackDetailFx = createEffect(async ({ trackId }: { trackId: string })
   return fetchTrackDetail(trackId)
 })
 
-const fetchRecommendationsFx = createEffect(async () => {
-  return fetchTrackRecommendations()
+const fetchRecommendationsFx = createEffect(async (options?: { limit?: number }) => {
+  return fetchTrackRecommendations({ limit: options?.limit ?? 12 })
 })
 
 const toggleLikeFx = createEffect(
@@ -65,6 +65,15 @@ export const $recommendedTracks = combine($recommendedBase, $likes, (tracks, lik
   )
 )
 
+// Состояния загрузки и ошибок для рекомендаций
+export const $recommendationsPending = fetchRecommendationsFx.pending
+
+export const $recommendationsError = createStore<string | null>(null)
+  .on(fetchRecommendationsFx.failData, (_, error) =>
+    error instanceof Error ? error.message : 'Не удалось загрузить рекомендации'
+  )
+  .reset(fetchRecommendationsFx)
+
 // Обновляем трек при открытии маршрута или изменении параметра trackId
 sample({
   clock: [routes.track.opened, routes.track.updated],
@@ -74,6 +83,7 @@ sample({
 
 sample({
   clock: routes.track.opened,
+  fn: () => undefined,
   target: fetchRecommendationsFx,
 })
 

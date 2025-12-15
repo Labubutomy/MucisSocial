@@ -3,7 +3,7 @@ import { useUnit } from 'effector-react'
 import { routes } from '@shared/router'
 import { cn } from '@shared/lib/cn'
 import { Avatar } from '@shared/ui/avatar'
-import { $isAuthenticated, $user, signOut } from '@features/auth'
+import { $isAuthenticated, $user } from '@features/auth'
 import {
   $query,
   $showDropdown,
@@ -25,17 +25,13 @@ export const AppHeader = () => {
     isAuthenticated,
     user,
     navigateToHome,
-    navigateToSession,
     navigateToProfile,
     navigateToAuth,
-    navigateToCreateRoute,
-    navigateToRoutes,
     changeQuery,
     setFocus,
     setHover,
     submitSearch,
     selectSuggestion,
-    handleSignOut,
   } = useUnit({
     query: $query,
     suggestions: $suggestions,
@@ -43,17 +39,13 @@ export const AppHeader = () => {
     isAuthenticated: $isAuthenticated,
     user: $user,
     navigateToHome: routes.home.navigate,
-    navigateToSession: routes.session.navigate,
     navigateToProfile: routes.profile.navigate,
     navigateToAuth: routes.auth.navigate,
-    navigateToCreateRoute: routes.routeCreate.navigate,
-    navigateToRoutes: routes.routes.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
     setHover: hoverChanged,
     submitSearch: searchSubmitted,
     selectSuggestion: suggestionSelected,
-    handleSignOut: signOut,
   })
 
   // Generate initials from username
@@ -172,31 +164,6 @@ export const AppHeader = () => {
             </div>
           )}
         </form>
-        {isAuthenticated && (
-          <>
-            <button
-              type="button"
-              onClick={() => navigateToRoutes({ params: {}, query: {} })}
-              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
-            >
-              Маршруты
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToCreateRoute({ params: {}, query: {} })}
-              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
-            >
-              Создать маршрут
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={() => navigateToSession({ params: {}, query: {} })}
-          className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
-        >
-          Слушать вместе
-        </button>
         {isAuthenticated ? (
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <button
@@ -213,13 +180,6 @@ export const AppHeader = () => {
                 fallback={getInitials(user?.username)}
                 size="sm"
               />
-            </button>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap"
-            >
-              Выйти
             </button>
           </div>
         ) : (

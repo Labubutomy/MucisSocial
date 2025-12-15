@@ -9,6 +9,8 @@ export interface MiniPlayerProps {
   isPlaying: boolean
   onTogglePlay: MouseEventHandler<HTMLButtonElement>
   onOpenTrack: () => void
+  onSkip?: () => void
+  onOpenQueue?: () => void
   className?: string
 }
 
@@ -19,6 +21,8 @@ export const MiniPlayer = ({
   isPlaying,
   onTogglePlay,
   onOpenTrack,
+  onSkip,
+  onOpenQueue,
   className,
 }: MiniPlayerProps) => (
   <div
@@ -40,31 +44,62 @@ export const MiniPlayer = ({
         <span className="truncate text-xs text-muted-foreground">{artist}</span>
       </div>
     </button>
-    <IconButton
-      aria-label={isPlaying ? 'Поставить трек на паузу' : 'Воспроизвести трек'}
-      onClick={onTogglePlay}
-      variant="muted"
-      size="lg"
-    >
-      {isPlaying ? (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          className="h-6 w-6"
-          fill="currentColor"
-        >
-          <path d="M9 5a1 1 0 0 1 1 1v12a1 1 0 1 1-2 0V6a1 1 0 0 1 1-1Zm6 0a1 1 0 0 1 1 1v12a1 1 0 1 1-2 0V6a1 1 0 0 1 1-1Z" />
-        </svg>
-      ) : (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          className="h-6 w-6"
-          fill="currentColor"
-        >
-          <path d="M5 5.868a1 1 0 0 1 1.52-.854l12 6.132a1 1 0 0 1 0 1.708l-12 6.132A1 1 0 0 1 5 18.132V5.868Z" />
-        </svg>
+    <div className="flex items-center gap-2">
+      {onOpenQueue && (
+        <IconButton aria-label="Открыть очередь" onClick={onOpenQueue} variant="muted" size="sm">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M4 5h16M4 9h16M4 13h16M4 17h16" />
+          </svg>
+        </IconButton>
       )}
-    </IconButton>
+      {onSkip && (
+        <IconButton aria-label="Пропустить трек" onClick={onSkip} variant="muted" size="sm">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="m5 4 10 8-10 8V4Z" />
+            <path d="M19 5v14" />
+          </svg>
+        </IconButton>
+      )}
+      <IconButton
+        aria-label={isPlaying ? 'Поставить трек на паузу' : 'Воспроизвести трек'}
+        onClick={onTogglePlay}
+        variant="muted"
+        size="lg"
+      >
+        {isPlaying ? (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="h-6 w-6"
+            fill="currentColor"
+          >
+            <path d="M9 5a1 1 0 0 1 1 1v12a1 1 0 1 1-2 0V6a1 1 0 0 1 1-1Zm6 0a1 1 0 0 1 1 1v12a1 1 0 1 1-2 0V6a1 1 0 0 1 1-1Z" />
+          </svg>
+        ) : (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="h-6 w-6"
+            fill="currentColor"
+          >
+            <path d="M5 5.868a1 1 0 0 1 1.52-.854l12 6.132a1 1 0 0 1 0 1.708l-12 6.132A1 1 0 0 1 5 18.132V5.868Z" />
+          </svg>
+        )}
+      </IconButton>
+    </div>
   </div>
 )

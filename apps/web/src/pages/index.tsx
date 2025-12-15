@@ -12,6 +12,7 @@ import { ProfilePage } from '@pages/profile'
 import { UserPlaylistsPage } from '@pages/user-playlists'
 import { CollectionPage } from '@pages/collection'
 import { SessionPage } from '@pages/session'
+import { GroupsPage } from '@pages/groups'
 import { CreatePlaylistPage } from '@pages/create-playlist'
 import { PlaylistAddTracksPage } from '@pages/playlist-add-tracks'
 import { CurationsPage } from '@pages/curations'
@@ -43,6 +44,7 @@ const RoutesView = createRoutesView({
     { route: routes.collection, view: CollectionPage },
     { route: routes.session, view: SessionPage },
     { route: routes.sessionRoom, view: SessionPage },
+    { route: routes.groups, view: GroupsPage },
     { route: routes.routeCreate, view: CreateRoutePage },
     { route: routes.routes, view: RoutesPage },
     { route: routes.routeView, view: RouteViewPage },

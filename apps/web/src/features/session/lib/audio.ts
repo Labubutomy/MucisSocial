@@ -1,5 +1,6 @@
 import type { RoomState } from '../api'
 import Hls from 'hls.js'
+import { $user } from '@features/auth'
 
 let audioElement: HTMLAudioElement | null = null
 let hlsInstance: Hls | null = null
@@ -11,6 +12,43 @@ let currentTrackId: string | null = null
 // Track when user manually initiated playback to ignore stale sync states
 let userInitiatedPlayback = false
 let userInitiatedPlaybackTimeout: ReturnType<typeof setTimeout> | null = null
+
+let currentUserId: string | null = null
+
+// Subscribe to user changes to keep currentUserId updated
+if (typeof window !== 'undefined') {
+  $user.watch(user => {
+    currentUserId = user?.id || null
+  })
+}
+
+/**
+ * Adds user_id to URL query parameters if user is authenticated
+ */
+const addUserIdToUrl = (url: string): string => {
+  try {
+    if (!currentUserId) {
+      return url
+    }
+
+    const urlObj = new URL(url)
+    // Only add if not already present
+    if (!urlObj.searchParams.has('user_id')) {
+      urlObj.searchParams.set('user_id', currentUserId)
+    }
+    return urlObj.toString()
+  } catch {
+    // If URL parsing fails, return original URL
+    return url
+  }
+}
+
+// Callback for track ended event
+let onTrackEndedCallback: (() => void) | null = null
+
+export const setTrackEndedCallback = (callback: (() => void) | null) => {
+  onTrackEndedCallback = callback
+}
 
 const ensureAudio = () => {
   if (audioElement) {
@@ -26,6 +64,15 @@ const ensureAudio = () => {
   audioElement.preload = 'auto'
   audioElement.crossOrigin = 'anonymous'
   audioElement.style.display = 'none'
+
+  // Add ended event listener
+  audioElement.addEventListener('ended', () => {
+    console.log('[Session Audio] Track ended')
+    if (onTrackEndedCallback) {
+      onTrackEndedCallback()
+    }
+  })
+
   document.body.appendChild(audioElement)
   return audioElement
 }
@@ -118,12 +165,18 @@ export const applyPlaybackState = async (state: RoomState) => {
 
     if (isHls) {
       if (Hls.isSupported()) {
+        const urlWithUserId = addUserIdToUrl(nextSource)
         hlsInstance = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
           debug: false,
+          xhrSetup: (xhr, url) => {
+            // Add user_id to all HLS requests (playlists and segments)
+            const urlWithUserId = addUserIdToUrl(url)
+            xhr.open('GET', urlWithUserId, true)
+          },
         })
-        hlsInstance.loadSource(nextSource)
+        hlsInstance.loadSource(urlWithUserId)
         hlsInstance.attachMedia(audio)
 
         await new Promise<void>((resolve, reject) => {
@@ -158,7 +211,8 @@ export const applyPlaybackState = async (state: RoomState) => {
       } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
         console.log('[Session Audio] Using native HLS support (Safari)')
-        audio.src = nextSource
+        const urlWithUserId = addUserIdToUrl(nextSource)
+        audio.src = urlWithUserId
         audio.load() // Ensure Safari loads the source
         await new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => {
@@ -195,7 +249,8 @@ export const applyPlaybackState = async (state: RoomState) => {
         return
       }
     } else {
-      audio.src = nextSource
+      const urlWithUserId = addUserIdToUrl(nextSource)
+      audio.src = urlWithUserId
       audio.load()
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -422,11 +477,23 @@ export const stopSessionAudio = () => {
   currentTrackId = null
   if (!audioElement) return
   audioElement.pause()
+  audioElement.currentTime = 0
   audioElement.src = ''
   audioElement.load()
 }
 
 export const getSessionAudio = () => audioElement
+
+export const seekSessionAudio = (seconds: number) => {
+  const audio = getSessionAudio()
+  if (!audio) return
+  const safeSeconds = Math.max(0, seconds)
+  try {
+    audio.currentTime = safeSeconds
+  } catch (error) {
+    console.warn('[Session Audio] Failed to seek audio element', error)
+  }
+}
 
 export const startSessionPlayback = async () => {
   const audio = getSessionAudio()
