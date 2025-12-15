@@ -2,12 +2,16 @@ FROM node:25-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json yarn.lock ./
+# Copy package files
+COPY package.json yarn.lock ./
 
-RUN yarn install --frozen-lockfile
+# Install dependencies
+RUN yarn install --frozen-lockfile --network-timeout 100000
 
+# Copy source code
 COPY . .
 
+# Build application
 RUN yarn build
 
 FROM nginx:alpine AS production

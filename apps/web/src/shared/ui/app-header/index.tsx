@@ -28,6 +28,8 @@ export const AppHeader = () => {
     navigateToSession,
     navigateToProfile,
     navigateToAuth,
+    navigateToCreateRoute,
+    navigateToRoutes,
     changeQuery,
     setFocus,
     setHover,
@@ -44,6 +46,8 @@ export const AppHeader = () => {
     navigateToSession: routes.session.navigate,
     navigateToProfile: routes.profile.navigate,
     navigateToAuth: routes.auth.navigate,
+    navigateToCreateRoute: routes.routeCreate.navigate,
+    navigateToRoutes: routes.routes.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
     setHover: hoverChanged,
@@ -168,6 +172,24 @@ export const AppHeader = () => {
             </div>
           )}
         </form>
+        {isAuthenticated && (
+          <>
+            <button
+              type="button"
+              onClick={() => navigateToRoutes({ params: {}, query: {} })}
+              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
+            >
+              Маршруты
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToCreateRoute({ params: {}, query: {} })}
+              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap flex-shrink-0"
+            >
+              Создать маршрут
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => navigateToSession({ params: {}, query: {} })}

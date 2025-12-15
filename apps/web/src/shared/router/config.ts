@@ -13,6 +13,9 @@ export const routes = {
   collection: createRoute<{ collectionId: string }>(),
   session: createRoute(),
   sessionRoom: createRoute<{ roomId: string }>(),
+  routeCreate: createRoute(),
+  routes: createRoute(),
+  routeView: createRoute<{ routeId: string }>(),
 }
 
 export const mappedRoutes = [
@@ -28,6 +31,9 @@ export const mappedRoutes = [
   { route: routes.collection, path: '/collection/:collectionId' },
   { route: routes.session, path: '/listen' },
   { route: routes.sessionRoom, path: '/listen/:roomId' },
+  { route: routes.routeCreate, path: '/routes/create' },
+  { route: routes.routes, path: '/routes' },
+  { route: routes.routeView, path: '/routes/:routeId' },
 ]
 
 export const router = createHistoryRouter({

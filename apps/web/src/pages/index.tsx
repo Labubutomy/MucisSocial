@@ -15,6 +15,9 @@ import { SessionPage } from '@pages/session'
 import { CreatePlaylistPage } from '@pages/create-playlist'
 import { PlaylistAddTracksPage } from '@pages/playlist-add-tracks'
 import { CurationsPage } from '@pages/curations'
+import { CreateRoutePage } from '@pages/create-route'
+import { RoutesPage } from '@pages/routes'
+import { RouteViewPage } from '@pages/route-view'
 
 const NotFoundPage = () => (
   <div className="page-container flex min-h-screen flex-col items-center justify-center gap-4 text-center">
@@ -40,6 +43,9 @@ const RoutesView = createRoutesView({
     { route: routes.collection, view: CollectionPage },
     { route: routes.session, view: SessionPage },
     { route: routes.sessionRoom, view: SessionPage },
+    { route: routes.routeCreate, view: CreateRoutePage },
+    { route: routes.routes, view: RoutesPage },
+    { route: routes.routeView, view: RouteViewPage },
   ],
   otherwise: NotFoundPage,
 })
