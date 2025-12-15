@@ -19,11 +19,12 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
     go install github.com/swaggo/swag/cmd/swag@latest
 
-# Copy proto files from users, artists, upload, and session services first
+# Copy proto files from users, artists, upload, session, and playback_queue services first
 COPY users/proto/users proto/users
 COPY artists/proto/artists proto/artists
 COPY upload/proto proto/upload
 COPY session/proto/session proto/session
+COPY playback_queue/api/queue.proto proto/queue/v1/queue.proto
 
 # Copy gateway source code (excluding proto if it exists)
 COPY gateway/ .
@@ -32,7 +33,7 @@ COPY gateway/ .
 RUN sed -i 's|option go_package = "github.com/MusicSocial/upload/proto";|option go_package = "github.com/MusicSocial/api-gateway/proto/upload";|' proto/upload/upload.proto
 
 # Generate protobuf files
-RUN mkdir -p proto/users/v1 proto/artists/v1 proto/playlist/v1 proto/tracks/v1 proto/upload proto/session/v1 && \
+RUN mkdir -p proto/users/v1 proto/artists/v1 proto/playlist/v1 proto/tracks/v1 proto/upload proto/session/v1 proto/queue/v1 && \
     protoc --proto_path=proto \
         --proto_path=/usr/local/include \
         --go_out=proto --go_opt=paths=source_relative \
@@ -42,7 +43,8 @@ RUN mkdir -p proto/users/v1 proto/artists/v1 proto/playlist/v1 proto/tracks/v1 p
         proto/playlist/v1/playlist.proto \
         proto/tracks/v1/tracks.proto \
         proto/upload/upload.proto \
-        proto/session/v1/session_service.proto || true
+        proto/session/v1/session_service.proto \
+        proto/queue/v1/queue.proto || true
 
 # Generate Swagger documentation
 RUN swag init || true

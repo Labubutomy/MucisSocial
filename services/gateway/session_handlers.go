@@ -210,6 +210,9 @@ func (g *Gateway) createRoomHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Note: Queue for session will be created lazily on first EnqueueTrack
+	// We use roomId as context_id when working with the queue
+
 	w.Header().Set("Content-Type", "application/json")
 	jsonRoom := convertProtoToJSON(resp.Room)
 	json.NewEncoder(w).Encode(jsonRoom)
