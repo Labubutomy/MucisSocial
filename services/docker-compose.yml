@@ -382,6 +382,7 @@ services:
       - playlist-service
       - upload
       - recommendations
+      - routes-service
     networks:
       - music-network
     restart: unless-stopped
@@ -393,6 +394,7 @@ services:
       - TRACKS_SERVICE_URL=http://tracks-service:8080
       - PLAYLIST_SERVICE_URL=playlist-service:50054
       - RECOMMENDATIONS_SERVICE_URL=http://recommendations:8080
+      - ROUTES_SERVICE_URL=http://routes-service:8080
 
   # Recommendations Service
   recommendations:
@@ -463,6 +465,90 @@ services:
       retries: 3
       start_period: 10s
 
+  # PostgreSQL Database for Routes Service
+  postgres-routes:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-routes
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_routes
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_routes_data:/var/lib/postgresql/data
+      - ./routes/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Routes Service
+  routes-service:
+    build:
+      context: ./routes
+    container_name: music-social-routes
+    ports:
+      - "8083:8080"
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres-routes:5432/music_social_routes?sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+      - HOST=0.0.0.0
+      - PORT=8080
+    depends_on:
+      postgres-routes:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Route Session Service
+  route-session-service:
+    build:
+      context: ./route_session
+    container_name: music-social-route-session
+    ports:
+      - "8084:8080"
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres-routes:5432/music_social_routes?sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - KAFKA_EVENTS_TOPIC=route-session-events
+      - KAFKA_SYNC_TOPIC=route-session-sync
+      - ROUTES_SERVICE_URL=http://routes-service:8080
+      - HOST=0.0.0.0
+      - PORT=8080
+    depends_on:
+      postgres-routes:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      routes-service:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # Session Service
   session-service:
     build:
@@ -470,7 +556,7 @@ services:
     container_name: music-social-session
     ports:
       - "8081:8080"
-      - "50056:50056"
+      - "50060:50060"
     depends_on:
       redpanda:
         condition: service_healthy
@@ -479,7 +565,7 @@ services:
     restart: unless-stopped
     environment:
       - SERVER_PORT=8080
-      - GRPC_PORT=50056
+      - GRPC_PORT=50060
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017
       - MONGODB_DATABASE=music_sessions
@@ -504,6 +590,7 @@ volumes:
   postgres_playlist_data:
   postgres_groups_data:
   postgres_playback_queue_data:
+  postgres_routes_data:
 
 networks:
   music-network:
