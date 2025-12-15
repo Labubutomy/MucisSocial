@@ -124,22 +124,26 @@ class ListeningEventProducer:
             )
             return False
 
+        # Convert to Unix timestamp (int64) for compatibility with recommendations service
+        now = datetime.now(timezone.utc)
+        ts = int(now.timestamp())
+        
         event = {
             "event_type": "track_listened",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_id": user_id,
             "track_id": track_id,
-            "source": source,
+            "ts": ts,  # Unix timestamp as int64
+            "listened_seconds": duration_sec if duration_sec is not None else 0,
         }
 
+        # Keep additional fields for other consumers (optional)
         if artist_id:
             event["artist_id"] = artist_id
-        if duration_sec is not None:
-            event["duration_sec"] = duration_sec
         if progress_pct is not None:
             event["progress_pct"] = progress_pct
         if quality:
             event["quality"] = quality
+        event["source"] = source
 
         try:
             if self._producer:

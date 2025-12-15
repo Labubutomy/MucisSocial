@@ -383,6 +383,7 @@ services:
       - upload
       - recommendations
       - routes-service
+      - playback-queue-service
     networks:
       - music-network
     restart: unless-stopped
