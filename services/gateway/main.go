@@ -32,6 +32,7 @@ import (
 
 	artistpb "github.com/MusicSocial/api-gateway/proto/artists/v1"
 	playlistpb "github.com/MusicSocial/api-gateway/proto/playlist/v1"
+	queuepb "github.com/MusicSocial/api-gateway/proto/queue/v1"
 	sessionpb "github.com/MusicSocial/api-gateway/proto/session/v1"
 	trackspb "github.com/MusicSocial/api-gateway/proto/tracks/v1"
 	uploadpb "github.com/MusicSocial/api-gateway/proto/upload"
@@ -53,7 +54,8 @@ type Gateway struct {
 	tracksClient       trackspb.TracksServiceClient
 	playlistClient     playlistpb.PlaylistServiceClient
 	uploadClient       uploadpb.UploadServiceClient
-  sessionClient  sessionpb.SessionServiceClient
+	sessionClient      sessionpb.SessionServiceClient
+	queueClient        queuepb.PlaybackQueueServiceClient
 	recommendationsURL string
 	jwtSecret          []byte
 }
@@ -106,10 +108,13 @@ func main() {
 		log.Fatalf("Failed to connect to session gRPC service: %v", err)
 	}
 	defer sessionConn.Close()
+
+	// Connect to playback queue gRPC service
+	queueConn, err := grpc.Dial("playback-queue-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to connect to session gRPC service: %v", err)
+		log.Fatalf("Failed to connect to playback queue gRPC service: %v", err)
 	}
-	defer sessionConn.Close()
+	defer queueConn.Close()
 
 	gateway := &Gateway{
 		userClient:         pb.NewUserServiceClient(userConn),
@@ -117,7 +122,8 @@ func main() {
 		tracksClient:       trackspb.NewTracksServiceClient(tracksConn),
 		playlistClient:     playlistpb.NewPlaylistServiceClient(playlistConn),
 		uploadClient:       uploadpb.NewUploadServiceClient(uploadConn),
-    sessionClient:  sessionpb.NewSessionServiceClient(sessionConn),
+		sessionClient:      sessionpb.NewSessionServiceClient(sessionConn),
+		queueClient:        queuepb.NewPlaybackQueueServiceClient(queueConn),
 		recommendationsURL: getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080"),
 		jwtSecret:          []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
@@ -144,8 +150,10 @@ func main() {
 	r.HandleFunc("/api/v1/artists/{artistId}", gateway.getArtistByIdHandler).Methods("GET", "OPTIONS")
 
 	// Public tracks endpoints (no JWT required)
-	r.HandleFunc("/api/v1/tracks", gateway.getTracksHandler).Methods("GET", "OPTIONS")
+	// IMPORTANT: More specific routes must be registered before generic ones
+	r.HandleFunc("/api/v1/tracks/new", gateway.getNewReleasesHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/search", gateway.searchTracksHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/tracks", gateway.getTracksHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/{trackId}", gateway.getTrackByIdHandler).Methods("GET", "OPTIONS")
 
 	// Upload endpoint (no JWT required)
@@ -173,11 +181,29 @@ func main() {
 	protected.HandleFunc("/rooms/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
+	
+	// Session queue endpoints (JWT required) - use playback_queue service
+	protected.HandleFunc("/sessions/{roomId}/queue/current", gateway.getSessionCurrentTrackHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue", gateway.getSessionQueueHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/tracks", gateway.addTrackToSessionQueueHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/tracks/{trackId}", gateway.removeTrackFromSessionQueueHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/next", gateway.getSessionNextTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/prev", gateway.getSessionPrevTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue", gateway.clearSessionQueueHandler).Methods("DELETE", "OPTIONS")
 	protected.HandleFunc("/me", gateway.getMeHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me", gateway.updateMeHandler).Methods("PUT", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.getSearchHistoryHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.addSearchHistoryHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.clearSearchHistoryHandler).Methods("DELETE", "OPTIONS")
+
+	// Queue endpoints
+	protected.HandleFunc("/me/queue/current", gateway.getUserCurrentTrackHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/me/queue", gateway.getUserQueueHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/me/queue/tracks", gateway.addTrackToUserQueueHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue/tracks/{trackId}", gateway.removeTrackFromUserQueueHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/me/queue/next", gateway.getUserNextTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue/prev", gateway.getUserPrevTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue", gateway.clearUserQueueHandler).Methods("DELETE", "OPTIONS")
 
 	// Artists endpoints
 	protected.HandleFunc("/artists", gateway.createArtistHandler).Methods("POST", "OPTIONS")
@@ -188,6 +214,9 @@ func main() {
 
 	// Recommendations endpoint
 	protected.HandleFunc("/recommendations", gateway.getRecommendationsHandler).Methods("GET", "OPTIONS")
+	
+	// Charts endpoint (public, no JWT required)
+	r.HandleFunc("/api/v1/charts/top", gateway.getChartsHandler).Methods("GET", "OPTIONS")
 
 	// Playlist endpoints
 	protected.HandleFunc("/playlists", gateway.createPlaylistHandler).Methods("POST", "OPTIONS")
@@ -995,6 +1024,54 @@ func (g *Gateway) getRecommendationsHandler(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// getChartsHandler proxies request to recommendations service for top charts
+func (g *Gateway) getChartsHandler(w http.ResponseWriter, r *http.Request) {
+	// Build URL with query parameters
+	targetURL := g.recommendationsURL + "/charts/top"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get charts: %v", err)
+		http.Error(w, "Failed to get charts", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
+// getNewReleasesHandler proxies request to recommendations service for new releases
+func (g *Gateway) getNewReleasesHandler(w http.ResponseWriter, r *http.Request) {
+	// Build URL with query parameters
+	targetURL := g.recommendationsURL + "/tracks/new"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get new releases: %v", err)
+		http.Error(w, "Failed to get new releases", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
 // ===== PLAYLIST HANDLERS =====
 
 // @Summary Создать плейлист
@@ -1682,4 +1759,251 @@ func (g *Gateway) reorderRoutePointsHandler(w http.ResponseWriter, r *http.Reque
 	vars := mux.Vars(r)
 	routeId := vars["routeId"]
 	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/reorder")
+}
+
+// Queue Handlers
+
+// getUserCurrentTrackHandler returns the current track in user's queue
+func (g *Gateway) getUserCurrentTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetCurrentTrack(ctx, &queuepb.GetCurrentTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// Queue is empty - this is normal
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"current": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current": resp.Current,
+	})
+}
+
+// getUserQueueHandler returns the list of tracks in user's queue
+func (g *Gateway) getUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	limit := int32(50)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 32); err == nil {
+			limit = int32(parsed)
+		}
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.ListQueue(ctx, &queuepb.ListQueueRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		Limit: limit,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	// Ensure items is always an array, not nil
+	items := resp.Items
+	if items == nil {
+		items = []*queuepb.QueueItem{}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items": items,
+	})
+}
+
+// addTrackToUserQueueHandler adds a track to user's queue
+func (g *Gateway) addTrackToUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		TrackID string `json:"track_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.TrackID == "" {
+		writeError(w, "track_id is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	_, err := g.queueClient.EnqueueTrack(ctx, &queuepb.EnqueueTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		TrackId: req.TrackID,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// removeTrackFromUserQueueHandler removes a track from user's queue
+func (g *Gateway) removeTrackFromUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	trackID := vars["trackId"]
+	if trackID == "" {
+		writeError(w, "trackId is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.RemoveTrack(ctx, &queuepb.RemoveTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		TrackId: trackID,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": resp.Success,
+	})
+}
+
+// getUserNextTrackHandler gets the next track and moves cursor forward
+func (g *Gateway) getUserNextTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetNextTrack(ctx, &queuepb.GetNextTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// Queue is empty
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"next": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"next": resp.Next,
+	})
+}
+
+// getUserPrevTrackHandler gets the previous track and moves cursor backward
+func (g *Gateway) getUserPrevTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetPrevTrack(ctx, &queuepb.GetPrevTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// No previous track
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"previous": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"previous": resp.Previous,
+	})
+}
+
+// clearUserQueueHandler clears user's queue
+func (g *Gateway) clearUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	_, err := g.queueClient.ClearQueue(ctx, &queuepb.ClearQueueRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
