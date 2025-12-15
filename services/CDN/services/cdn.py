@@ -18,8 +18,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Pattern to extract track_id from resource path
-# Expected format: /tracks/{track_id}/... or /{track_id}/...
-TRACK_ID_PATTERN = re.compile(r"/(?:tracks/)?([a-f0-9-]{36})/", re.IGNORECASE)
+# Expected format: /origin/{artist_id}/{track_id}/transcoded/... or /{artist_id}/{track_id}/transcoded/...
+# We need the second UUID (track_id), not the first one (artist_id)
+TRACK_ID_PATTERN = re.compile(r"/(?:origin/)?[a-f0-9-]{36}/([a-f0-9-]{36})/transcoded", re.IGNORECASE)
 
 
 class CDNService:
@@ -121,6 +122,10 @@ class CDNService:
         """Check if resource is a media segment (triggers listening event)."""
         return resource_path.endswith(".m4s") and "init" not in resource_path.lower()
 
+    def _is_master_playlist(self, resource_path: str) -> bool:
+        """Check if resource is a master playlist (triggers listening event on first request)."""
+        return resource_path.endswith("master.m3u8")
+
     def _extract_quality_from_path(self, resource_path: str) -> str | None:
         """Extract quality from path (e.g., /tracks/{id}/128kbps/...)."""
         quality_match = re.search(r"/(\d+k(?:bps)?)/", resource_path, re.IGNORECASE)
@@ -164,8 +169,9 @@ class CDNService:
         # Extract track_id and user_id for potential listening event
         track_id = self._extract_track_id(resource_path)
         user_id = self._extract_user_id(request)
+        # Publish event for master playlist (start of playback) or media segments
         should_publish_event = (
-            self._is_media_segment(resource_path)
+            (self._is_master_playlist(resource_path) or self._is_media_segment(resource_path))
             and track_id is not None
             and user_id is not None
         )
