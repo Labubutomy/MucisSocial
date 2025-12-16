@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -51,6 +52,7 @@ func (s *Server) setupRoutes() {
 	s.router.POST("/recommendations", s.recommendationsHandler)
 	s.router.GET("/charts/top", s.chartsTopHandler)
 	s.router.GET("/tracks/new", s.newReleasesHandler)
+	s.router.GET("/users/:user_id/taste", s.userTasteHandler)
 	s.router.GET("/debug/tracks", s.debugTracksHandler)
 	s.router.GET("/debug/users/:user_id", s.debugUserHandler)
 }
@@ -220,6 +222,98 @@ func (s *Server) newReleasesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, NewReleasesResponse{
 		Tracks:    trackIDs,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// UserTasteResponse represents the user taste statistics API response
+type UserTasteResponse struct {
+	UserID   string   `json:"user_id"`
+	TopGenres []GenreStat `json:"top_genres"`
+	TopArtists []ArtistStat `json:"top_artists"`
+}
+
+type GenreStat struct {
+	Genre string `json:"genre"`
+	Count int    `json:"count"`
+}
+
+type ArtistStat struct {
+	ArtistID string `json:"artist_id"`
+	Count    int    `json:"count"`
+}
+
+func (s *Server) userTasteHandler(c *gin.Context) {
+	userID := c.Param("user_id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		return
+	}
+
+	profile, ok := s.userProfileStore.Get(userID)
+	if !ok {
+		// Return empty taste if user not found
+		c.JSON(http.StatusOK, UserTasteResponse{
+			UserID:    userID,
+			TopGenres: []GenreStat{},
+			TopArtists: []ArtistStat{},
+		})
+		return
+	}
+
+	// Get top genres (sorted by count, descending)
+	type genreCount struct {
+		genre string
+		count int
+	}
+	genres := make([]genreCount, 0, len(profile.GenreListenCount))
+	for genre, count := range profile.GenreListenCount {
+		genres = append(genres, genreCount{genre, count})
+	}
+	sort.Slice(genres, func(i, j int) bool {
+		return genres[i].count > genres[j].count
+	})
+
+	topGenres := make([]GenreStat, 0, 10)
+	maxGenres := 10
+	if maxGenres > len(genres) {
+		maxGenres = len(genres)
+	}
+	for i := 0; i < maxGenres; i++ {
+		topGenres = append(topGenres, GenreStat{
+			Genre: genres[i].genre,
+			Count: genres[i].count,
+		})
+	}
+
+	// Get top artists (sorted by count, descending)
+	type artistCount struct {
+		artistID string
+		count    int
+	}
+	artists := make([]artistCount, 0, len(profile.ArtistListenCount))
+	for artistID, count := range profile.ArtistListenCount {
+		artists = append(artists, artistCount{artistID, count})
+	}
+	sort.Slice(artists, func(i, j int) bool {
+		return artists[i].count > artists[j].count
+	})
+
+	topArtists := make([]ArtistStat, 0, 10)
+	maxArtists := 10
+	if maxArtists > len(artists) {
+		maxArtists = len(artists)
+	}
+	for i := 0; i < maxArtists; i++ {
+		topArtists = append(topArtists, ArtistStat{
+			ArtistID: artists[i].artistID,
+			Count:    artists[i].count,
+		})
+	}
+
+	c.JSON(http.StatusOK, UserTasteResponse{
+		UserID:    userID,
+		TopGenres: topGenres,
+		TopArtists: topArtists,
 	})
 }
 

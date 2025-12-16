@@ -3,7 +3,9 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/models"
@@ -19,6 +21,7 @@ type EventConsumer struct {
 	trackStore       store.TrackStore
 	userProfileStore store.UserProfileStore
 	globalStatsStore store.GlobalStatsStore
+	tracksServiceURL string // For fallback track loading
 }
 
 // NewEventConsumer creates a new event consumer
@@ -29,6 +32,7 @@ func NewEventConsumer(
 	trackStore store.TrackStore,
 	userProfileStore store.UserProfileStore,
 	globalStatsStore store.GlobalStatsStore,
+	tracksServiceURL string,
 ) *EventConsumer {
 	trackReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
@@ -58,6 +62,7 @@ func NewEventConsumer(
 		trackStore:       trackStore,
 		userProfileStore: userProfileStore,
 		globalStatsStore: globalStatsStore,
+		tracksServiceURL: tracksServiceURL,
 	}
 }
 
@@ -172,16 +177,119 @@ func (c *EventConsumer) handleListeningEvent(data []byte) {
 	profile := c.userProfileStore.GetOrCreate(event.UserID)
 
 	track, ok := c.trackStore.Get(event.TrackID)
-	if ok {
+	if !ok {
+		// Try to load track from tracks-service as fallback
+		if c.tracksServiceURL != "" {
+			log.Printf("Attempting to load track %s from tracks-service (URL: %s)", event.TrackID, c.tracksServiceURL)
+			if loadedTrack := c.loadTrackFromService(event.TrackID); loadedTrack != nil {
+				track = loadedTrack
+				ok = true
+				log.Printf("Successfully loaded track %s from tracks-service as fallback (genres: %v, artist: %s)", event.TrackID, track.Genres, track.ArtistID)
+			} else {
+				log.Printf("Failed to load track %s from tracks-service", event.TrackID)
+			}
+		} else {
+			log.Printf("tracksServiceURL is empty, cannot load track %s from service", event.TrackID)
+		}
+		
+		if !ok {
+			log.Printf("Warning: Track %s not found in TrackStore when processing listening event for user %s. Statistics will not be updated.", event.TrackID, event.UserID)
+			// Still mark track as listened even if metadata is missing
+			profile.ListenedTracks[event.TrackID] = struct{}{}
+			c.userProfileStore.Update(profile)
+			c.globalStatsStore.IncrementPlayCount(event.TrackID)
+			return
+		}
+	}
+
+	// Update genre statistics
+	if len(track.Genres) > 0 {
 		for _, genre := range track.Genres {
 			profile.GenreListenCount[genre]++
 		}
+	} else {
+		log.Printf("Warning: Track %s has no genres", event.TrackID)
+	}
+
+	// Update artist statistics
+	if track.ArtistID != "" {
 		profile.ArtistListenCount[track.ArtistID]++
+	} else {
+		log.Printf("Warning: Track %s has no artist_id", event.TrackID)
 	}
 
 	profile.ListenedTracks[event.TrackID] = struct{}{}
 	c.userProfileStore.Update(profile)
 	c.globalStatsStore.IncrementPlayCount(event.TrackID)
 
-	log.Printf("Processed listening event: user %s listened to track %s", event.UserID, event.TrackID)
+	log.Printf("Processed listening event: user %s listened to track %s (genres: %v, artist: %s)", 
+		event.UserID, event.TrackID, track.Genres, track.ArtistID)
+}
+
+// loadTrackFromService attempts to load a track from tracks-service
+func (c *EventConsumer) loadTrackFromService(trackID string) *models.Track {
+	if c.tracksServiceURL == "" {
+		log.Printf("loadTrackFromService: tracksServiceURL is empty")
+		return nil
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf("%s/api/tracks/%s", c.tracksServiceURL, trackID)
+	log.Printf("loadTrackFromService: requesting %s", url)
+	
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("loadTrackFromService: failed to create request: %v", err)
+		return nil
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("loadTrackFromService: HTTP request failed: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("loadTrackFromService: tracks-service returned status %d for track %s", resp.StatusCode, trackID)
+		return nil
+	}
+
+	var trackResp struct {
+		ID        string    `json:"id"`
+		ArtistIDs []string  `json:"artist_ids"` // UUIDs as strings
+		Genre     string    `json:"genre"`
+		CreatedAt time.Time `json:"created_at"` // time.Time from Go
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&trackResp); err != nil {
+		log.Printf("loadTrackFromService: failed to decode response: %v", err)
+		return nil
+	}
+	
+	log.Printf("loadTrackFromService: received track data - ID: %s, ArtistIDs: %v, Genre: %s", trackResp.ID, trackResp.ArtistIDs, trackResp.Genre)
+
+	artistID := ""
+	if len(trackResp.ArtistIDs) > 0 {
+		artistID = trackResp.ArtistIDs[0]
+	}
+
+	genres := []string{}
+	if trackResp.Genre != "" {
+		genres = append(genres, trackResp.Genre)
+	}
+
+	releaseTS := trackResp.CreatedAt.Unix()
+
+	track := &models.Track{
+		TrackID:    trackID,
+		ArtistID:   artistID,
+		Genres:     genres,
+		ReleaseTS:  releaseTS,
+		IsExplicit: false,
+	}
+
+	// Store the track for future use
+	c.trackStore.Upsert(track)
+	return track
 }
