@@ -89,6 +89,7 @@ func main() {
 		trackStore,
 		userProfileStore,
 		globalStatsStore,
+		cfg.TracksServiceURL,
 	)
 
 	// Start consuming events in background

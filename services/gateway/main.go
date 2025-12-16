@@ -217,6 +217,9 @@ func main() {
 	
 	// Charts endpoint (public, no JWT required)
 	r.HandleFunc("/api/v1/charts/top", gateway.getChartsHandler).Methods("GET", "OPTIONS")
+	
+	// User taste statistics endpoint (public, no JWT required)
+	r.HandleFunc("/api/v1/users/{userId}/taste", gateway.getUserTasteHandler).Methods("GET", "OPTIONS")
 
 	// Playlist endpoints
 	protected.HandleFunc("/playlists", gateway.createPlaylistHandler).Methods("POST", "OPTIONS")
@@ -1060,6 +1063,37 @@ func (g *Gateway) getNewReleasesHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		log.Printf("Failed to get new releases: %v", err)
 		http.Error(w, "Failed to get new releases", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
+// getUserTasteHandler proxies request to recommendations service for user taste statistics
+func (g *Gateway) getUserTasteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	
+	// Build URL
+	targetURL := g.recommendationsURL + "/users/" + userID + "/taste"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get user taste: %v", err)
+		http.Error(w, "Failed to get user taste", http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
