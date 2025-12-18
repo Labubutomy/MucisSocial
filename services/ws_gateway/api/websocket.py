@@ -186,7 +186,7 @@ class ConnectionManager:
             await self.send_personal_message(error_msg.model_dump(), connection_id)
 
     def start_kafka_consumer(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Start consuming sync messages from Kafka."""
+        """Start consuming sync and messaging events from Kafka."""
         self.kafka_service.connect_consumer()
 
         def consume_loop():
@@ -205,96 +205,17 @@ class ConnectionManager:
                     for topic_partition, messages in message_pack.items():
                         for message in messages:
                             try:
-                                sync_data = message.value
-                                print(f"[WS Gateway] ========== RECEIVED SYNC MESSAGE FROM KAFKA ==========")
-                                print(f"[WS Gateway] Full sync_data: {sync_data}")
+                                topic = topic_partition.topic
+                                value = message.value
+                                print(f"[WS Gateway] Kafka message from topic={topic}: {value}")
                                 
-                                room_id = sync_data.get("roomId") or sync_data.get("room_id")
-                                state = sync_data.get("state")
-                                
-                                # Log state details
-                                if state:
-                                    # Check all possible field names for isPlaying
-                                    state_is_playing = (
-                                        state.get("isPlaying") or 
-                                        state.get("is_playing") or 
-                                        state.get("playing")
-                                    )
-                                    state_track = state.get("currentTrack") or state.get("current_track")
-                                    print(f"[WS Gateway] State details:")
-                                    print(f"[WS Gateway]   - roomId: {state.get('roomId') or state.get('room_id')}")
-                                    print(f"[WS Gateway]   - isPlaying: {state_is_playing}")
-                                    print(f"[WS Gateway]   - playing (raw): {state.get('playing')}")
-                                    print(f"[WS Gateway]   - isPlaying (raw): {state.get('isPlaying')}")
-                                    print(f"[WS Gateway]   - is_playing (raw): {state.get('is_playing')}")
-                                    print(f"[WS Gateway]   - currentTrack: {state_track}")
-                                    print(f"[WS Gateway]   - position: {state.get('position')}")
-                                    
-                                    # Normalize the field name to isPlaying for consistency
-                                    if "playing" in state and "isPlaying" not in state and "is_playing" not in state:
-                                        state["isPlaying"] = state["playing"]
-                                        print(f"[WS Gateway] Normalized 'playing' to 'isPlaying': {state['isPlaying']}")
-                                
-                                print(f"[WS Gateway] Parsed sync message - room_id: {room_id}, has_state: {state is not None}")
-                                
-                                if room_id and state:
-                                    # Convert timestamp from ISO string to float (Unix timestamp)
-                                    timestamp = None
-                                    timestamp_value = sync_data.get("timestamp")
-                                    if timestamp_value:
-                                        if isinstance(timestamp_value, str):
-                                            # Parse ISO 8601 string to Unix timestamp
-                                            from datetime import datetime
-                                            try:
-                                                dt = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
-                                                timestamp = dt.timestamp()
-                                            except Exception as e:
-                                                print(f"[WS Gateway] Failed to parse timestamp {timestamp_value}: {e}")
-                                                timestamp = None
-                                        elif isinstance(timestamp_value, (int, float)):
-                                            # Already a number (Unix timestamp in seconds)
-                                            timestamp = float(timestamp_value)
-                                    
-                                    server_message = ServerMessage(
-                                        type=ServerMessageType.SYNC_STATE,
-                                        room_id=room_id,
-                                        state=state,
-                                        timestamp=timestamp,
-                                    )
-                                    
-                                    # Log what we're sending to clients
-                                    message_dict = server_message.model_dump()
-                                    state_to_send = message_dict.get("state", {})
-                                    # Normalize playing field to isPlaying if needed
-                                    if isinstance(state_to_send, dict):
-                                        if "playing" in state_to_send and "isPlaying" not in state_to_send and "is_playing" not in state_to_send:
-                                            state_to_send["isPlaying"] = state_to_send["playing"]
-                                            message_dict["state"] = state_to_send
-                                            print(f"[WS Gateway] Normalized 'playing' to 'isPlaying' in message: {state_to_send['isPlaying']}")
-                                    
-                                    is_playing_in_message = (
-                                        state_to_send.get("isPlaying") or 
-                                        state_to_send.get("is_playing") or 
-                                        state_to_send.get("playing")
-                                    )
-                                    print(f"[WS Gateway] ========== BROADCASTING TO CLIENTS ==========")
-                                    print(f"[WS Gateway] Room: {room_id}")
-                                    print(f"[WS Gateway] isPlaying in message: {is_playing_in_message}")
-                                    print(f"[WS Gateway] State keys: {list(state_to_send.keys()) if isinstance(state_to_send, dict) else 'not a dict'}")
-                                    print(f"[WS Gateway] Full state object: {state_to_send}")
-                                    print(f"[WS Gateway] Broadcasting sync_state to room {room_id}")
-                                    
-                                    # Schedule coroutine in the main event loop
-                                    asyncio.run_coroutine_threadsafe(
-                                        self.broadcast_to_room(
-                                            message_dict, room_id
-                                        ),
-                                        loop
-                                    )
-                                else:
-                                    print(f"[WS Gateway] Skipping sync message - missing room_id or state: room_id={room_id}, state={state is not None}")
+                                if topic == self.settings.kafka_sync_topic:
+                                    # старый путь синхронизации сессий
+                                    self._handle_session_sync_message(loop, value)
+                                elif topic == self.settings.kafka_messaging_topic:
+                                    self._handle_messaging_event(loop, value)
                             except Exception as e:
-                                print(f"[WS Gateway] Error processing sync message: {e}")
+                                print(f"[WS Gateway] Error processing Kafka message: {e}")
                                 import traceback
                                 traceback.print_exc()
 
@@ -306,6 +227,84 @@ class ConnectionManager:
         import threading
         thread = threading.Thread(target=consume_loop, daemon=True)
         thread.start()
+
+    def _handle_session_sync_message(self, loop: asyncio.AbstractEventLoop, sync_data: dict[str, Any]) -> None:
+        from datetime import datetime
+
+        print(f"[WS Gateway] ========== RECEIVED SYNC MESSAGE FROM KAFKA ==========")
+        print(f"[WS Gateway] Full sync_data: {sync_data}")
+
+        room_id = sync_data.get("roomId") or sync_data.get("room_id")
+        state = sync_data.get("state")
+
+        if not room_id or not state:
+            print(f"[WS Gateway] Skipping sync message - missing room_id or state: room_id={room_id}, state={state is not None}")
+            return
+
+        timestamp = None
+        timestamp_value = sync_data.get("timestamp")
+        if timestamp_value:
+            if isinstance(timestamp_value, str):
+                try:
+                    dt = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
+                    timestamp = dt.timestamp()
+                except Exception as e:
+                    print(f"[WS Gateway] Failed to parse timestamp {timestamp_value}: {e}")
+            elif isinstance(timestamp_value, (int, float)):
+                timestamp = float(timestamp_value)
+
+        server_message = ServerMessage(
+            type=ServerMessageType.SYNC_STATE,
+            room_id=room_id,
+            state=state,
+            timestamp=timestamp,
+        )
+
+        message_dict = server_message.model_dump()
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast_to_room(message_dict, room_id),
+            loop,
+        )
+
+    def _handle_messaging_event(self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]) -> None:
+        """Handle messaging events from messaging-service."""
+        event_type = event.get("event_type")
+        print(f"[WS Gateway] Handling messaging event: {event_type}")
+
+        if event_type == "message_sent":
+            conv_id = event.get("conversation_id")
+            if not conv_id:
+                return
+            server_message = ServerMessage(
+                type=ServerMessageType.MESSAGE,
+                conversation_id=conv_id,
+                message=event,
+            )
+            message_dict = server_message.model_dump()
+            # Для начала рассылаем всем активным подключениям (фронт сам отфильтрует)
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_to_all(message_dict),
+                loop,
+            )
+        elif event_type == "conversation_read":
+            conv_id = event.get("conversation_id")
+            if not conv_id:
+                return
+            server_message = ServerMessage(
+                type=ServerMessageType.CONVERSATION_READ,
+                conversation_id=conv_id,
+                message=event,
+            )
+            message_dict = server_message.model_dump()
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_to_all(message_dict),
+                loop,
+            )
+
+    async def _broadcast_to_all(self, message: dict[str, Any]) -> None:
+        """Broadcast message to all active WebSocket connections (for messaging events)."""
+        for connection_id in list(self.active_connections.keys()):
+            await self.send_personal_message(message, connection_id)
 
 
 # Global connection manager instance

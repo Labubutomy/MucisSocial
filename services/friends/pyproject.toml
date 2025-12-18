@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "friends-service"
+version = "0.1.0"
+description = "Friends and social graph service for Music Social"
+authors = ["Music Social"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = "^0.32.0"
+sqlalchemy = "^2.0.36"
+asyncpg = "^0.30.0"
+alembic = "^1.13.3"
+psycopg2-binary = "^2.9.10"
+pydantic = "^2.9.0"
+pydantic-settings = "^2.6.1"
+python-dotenv = "^1.0.1"
+PyJWT = "^2.8.0"
+httpx = "^0.27.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+

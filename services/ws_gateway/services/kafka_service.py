@@ -31,9 +31,13 @@ class KafkaService:
         print(f"[KafkaService] Producer connected successfully")
 
     def connect_consumer(self, group_id: str = "ws-gateway-group") -> None:
-        """Connect Kafka consumer."""
-        self.consumer = KafkaConsumer(
+        """Connect Kafka consumer for session sync and messaging events."""
+        topics = [
             self.settings.kafka_sync_topic,
+            self.settings.kafka_messaging_topic,
+        ]
+        self.consumer = KafkaConsumer(
+            *topics,
             bootstrap_servers=self.settings.kafka_brokers.split(","),
             group_id=group_id,
             value_deserializer=lambda m: json.loads(m.decode("utf-8")),
