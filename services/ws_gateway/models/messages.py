@@ -40,6 +40,8 @@ class ServerMessageType(str, Enum):
     """Types of server messages."""
 
     SYNC_STATE = "sync_state"
+    MESSAGE = "message"
+    CONVERSATION_READ = "conversation_read"
     ERROR = "error"
     PONG = "pong"
 
@@ -50,6 +52,8 @@ class ServerMessage(BaseModel):
     type: ServerMessageType
     room_id: str | None = None
     state: dict[str, Any] | None = None
+    message: dict[str, Any] | None = None
+    conversation_id: str | None = None
     error: str | None = None
     timestamp: float | None = None
 

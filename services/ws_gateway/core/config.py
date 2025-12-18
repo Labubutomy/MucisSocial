@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     kafka_sync_topic: str = Field(
         default="music-session-sync", description="Topic for sync messages"
     )
+    kafka_messaging_topic: str = Field(
+        default="messaging-events", description="Topic for messaging events"
+    )
 
     # WebSocket configuration
     ping_interval: int = Field(
