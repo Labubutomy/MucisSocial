@@ -18,6 +18,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	artistpb "github.com/MusicSocial/api-gateway/proto/artists/v1"
 	playlistpb "github.com/MusicSocial/api-gateway/proto/playlist/v1"
@@ -57,6 +59,8 @@ type Gateway struct {
 	sessionClient      sessionpb.SessionServiceClient
 	queueClient        queuepb.PlaybackQueueServiceClient
 	recommendationsURL string
+	messagingURL       string
+	friendsURL         string
 	jwtSecret          []byte
 }
 
@@ -125,6 +129,8 @@ func main() {
 		sessionClient:      sessionpb.NewSessionServiceClient(sessionConn),
 		queueClient:        queuepb.NewPlaybackQueueServiceClient(queueConn),
 		recommendationsURL: getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080"),
+		messagingURL:       getEnv("MESSAGING_SERVICE_URL", "http://messaging-service:8080"),
+		friendsURL:         getEnv("FRIENDS_SERVICE_URL", "http://friends-service:8080"),
 		jwtSecret:          []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
@@ -152,6 +158,7 @@ func main() {
 	// Public tracks endpoints (no JWT required)
 	// IMPORTANT: More specific routes must be registered before generic ones
 	r.HandleFunc("/api/v1/tracks/new", gateway.getNewReleasesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/tracks/search/trending", gateway.getTrendingQueriesHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/search", gateway.searchTracksHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks", gateway.getTracksHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/{trackId}", gateway.getTrackByIdHandler).Methods("GET", "OPTIONS")
@@ -214,6 +221,18 @@ func main() {
 
 	// Recommendations endpoint
 	protected.HandleFunc("/recommendations", gateway.getRecommendationsHandler).Methods("GET", "OPTIONS")
+	
+	// Messaging endpoints (proxy to messaging-service)
+	protected.PathPrefix("/messaging/").HandlerFunc(gateway.messagingProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+
+	// Friends endpoints (proxy to friends-service)
+	// Обрабатываем как /friends, так и /friends/*
+	protected.PathPrefix("/friends").HandlerFunc(gateway.friendsProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+	
+	// User search endpoint
+	protected.HandleFunc("/users/search", gateway.searchUsersHandler).Methods("GET", "OPTIONS")
+	// Get user by ID endpoint (protected)
+	protected.HandleFunc("/users/{userId}", gateway.getUserByIdHandler).Methods("GET", "OPTIONS")
 	
 	// Charts endpoint (public, no JWT required)
 	r.HandleFunc("/api/v1/charts/top", gateway.getChartsHandler).Methods("GET", "OPTIONS")
@@ -280,8 +299,147 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// messagingProxyHandler proxies all /api/v1/messaging/* requests to messaging-service
+func (g *Gateway) messagingProxyHandler(w http.ResponseWriter, r *http.Request) {
+	target, err := url.Parse(g.messagingURL)
+	if err != nil {
+		log.Printf("Failed to parse messaging service URL: %v", err)
+		writeError(w, "Messaging service unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Обрезаем префикс /api/v1/messaging и добавляем /api/v1 обратно
+	originalPath := r.URL.Path
+	prefix := "/api/v1/messaging"
+	if strings.HasPrefix(originalPath, prefix) {
+		trimmed := strings.TrimPrefix(originalPath, prefix)
+		if trimmed == "" {
+			r.URL.Path = "/api/v1"
+		} else {
+			r.URL.Path = "/api/v1" + trimmed
+		}
+	}
+
+	// Обновляем Host и Scheme для правильного проксирования
+	r.URL.Host = target.Host
+	r.URL.Scheme = target.Scheme
+	r.Host = target.Host
+	
+	// Сохраняем CORS заголовки из middleware перед проксированием
+	corsHeaders := make(map[string]string)
+	for key, values := range w.Header() {
+		if strings.HasPrefix(key, "Access-Control-") {
+			if len(values) > 0 {
+				corsHeaders[key] = values[0]
+			}
+		}
+	}
+	
+	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
+	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
+	for key := range corsHeaders {
+		w.Header().Del(key)
+	}
+	
+	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Удаляем CORS заголовки из ответа сервиса, если они есть
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		
+		// Устанавливаем CORS заголовки из middleware только один раз
+		for key, value := range corsHeaders {
+			resp.Header.Set(key, value)
+		}
+		return nil
+	}
+	
+	proxy.ServeHTTP(w, r)
+}
+
+// friendsProxyHandler proxies all /api/v1/friends/* requests to friends-service
+func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
+	target, err := url.Parse(g.friendsURL)
+	if err != nil {
+		log.Printf("Failed to parse friends service URL: %v", err)
+		writeError(w, "Friends service unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Обрезаем префикс /api/v1/friends
+	originalPath := r.URL.Path
+	prefix := "/api/v1/friends"
+	log.Printf("[Friends Proxy] Original path: %s", originalPath)
+	if strings.HasPrefix(originalPath, prefix) {
+		trimmed := strings.TrimPrefix(originalPath, prefix)
+		if trimmed == "" {
+			r.URL.Path = "/"
+		} else if !strings.HasPrefix(trimmed, "/") {
+			// Если после обрезки нет слеша, добавляем его
+			r.URL.Path = "/" + trimmed
+		} else {
+			r.URL.Path = trimmed
+		}
+		log.Printf("[Friends Proxy] Proxying to: %s%s", target.String(), r.URL.Path)
+	} else {
+		log.Printf("[Friends Proxy] WARNING: Path %s does not start with prefix %s", originalPath, prefix)
+	}
+
+	// Обновляем Host и Scheme для правильного проксирования
+	r.URL.Host = target.Host
+	r.URL.Scheme = target.Scheme
+	r.Host = target.Host
+	
+	// Сохраняем CORS заголовки из middleware перед проксированием
+	corsHeaders := make(map[string]string)
+	for key, values := range w.Header() {
+		if strings.HasPrefix(key, "Access-Control-") {
+			if len(values) > 0 {
+				corsHeaders[key] = values[0]
+			}
+		}
+	}
+	
+	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
+	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
+	for key := range corsHeaders {
+		w.Header().Del(key)
+	}
+	
+	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Удаляем CORS заголовки из ответа сервиса, если они есть
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		
+		// Устанавливаем CORS заголовки из middleware только один раз
+		for key, value := range corsHeaders {
+			resp.Header.Set(key, value)
+		}
+		return nil
+	}
+	
+	proxy.ServeHTTP(w, r)
+}
+
 func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// OPTIONS запросы (preflight) должны проходить без проверки JWT
+		if r.Method == "OPTIONS" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			writeError(w, "Missing Authorization header", http.StatusUnauthorized)
@@ -540,6 +698,72 @@ func (g *Gateway) updateMeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// searchUsersHandler godoc
+//
+//	@Summary		Поиск пользователей
+//	@Description	Поиск пользователей по username
+//	@Tags			User Profile
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			q		query		string	true	"Поисковый запрос (username)"
+//	@Param			limit	query		int		false	"Количество результатов"	default(10)
+//	@Success		200		{object}	object{users=[]object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+// getUserByIdHandler handles getting user by ID
+func (g *Gateway) getUserByIdHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	grpcReq := &pb.GetUserByIdRequest{
+		UserId: userID,
+	}
+
+	resp, err := g.userClient.GetUserById(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user": resp.User,
+	})
+}
+
+//	@Router			/api/v1/users/search [get]
+func (g *Gateway) searchUsersHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		writeError(w, "Search query is required", http.StatusBadRequest)
+		return
+	}
+
+	limit := int32(10)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 32); err == nil && parsed > 0 && parsed <= 50 {
+			limit = int32(parsed)
+		}
+	}
+
+	grpcReq := &pb.SearchUsersRequest{
+		Query: query,
+		Limit: limit,
+	}
+
+	resp, err := g.userClient.SearchUsers(context.Background(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"users": resp.Users,
+	})
+}
+
 // getSearchHistoryHandler godoc
 //
 //	@Summary		Получение истории поиска
@@ -619,6 +843,17 @@ func (g *Gateway) addSearchHistoryHandler(w http.ResponseWriter, r *http.Request
 		handleGrpcError(w, err)
 		return
 	}
+
+	// Отправляем событие поиска в recommendations-service (non-blocking)
+	go func() {
+		recommendationsURL := getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080")
+		client := &http.Client{Timeout: 2 * time.Second}
+		reqBody := map[string]string{"query": req.Query}
+		jsonBody, _ := json.Marshal(reqBody)
+		req, _ := http.NewRequest("POST", recommendationsURL+"/search/query", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		client.Do(req) // Ignore errors - best effort
+	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1659,6 +1894,40 @@ func (g *Gateway) searchTracksHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Модифицируем запрос
 	r.URL.Path = "/api/tracks/search"
+	r.URL.Host = targetURL.Host
+	r.URL.Scheme = targetURL.Scheme
+	r.Host = targetURL.Host
+
+	// Проксируем запрос
+	proxy.ServeHTTP(w, r)
+}
+
+// getTrendingQueriesHandler godoc
+//
+//	@Summary		Получить популярные поисковые запросы
+//	@Description	Возвращает список самых популярных поисковых запросов за последний месяц
+//	@Tags			Tracks
+//	@Accept			json
+//	@Produce		json
+//	@Param			limit	query		int		false	"Количество запросов для возврата"	default(10)
+//	@Param			days	query		int		false	"Количество дней для анализа"		default(30)
+//	@Success		200		{object}	object{items=[]object{query=string,count=int}}
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/api/v1/tracks/search/trending [get]
+func (g *Gateway) getTrendingQueriesHandler(w http.ResponseWriter, r *http.Request) {
+	// Проксируем запрос к recommendations-service
+	recommendationsURL := getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080")
+	targetURL, err := url.Parse(recommendationsURL)
+	if err != nil {
+		writeError(w, "Invalid recommendations service URL", http.StatusInternalServerError)
+		return
+	}
+
+	// Создаем прокси
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Модифицируем запрос для проксирования
+	r.URL.Path = "/search/trending"
 	r.URL.Host = targetURL.Host
 	r.URL.Scheme = targetURL.Scheme
 	r.Host = targetURL.Host

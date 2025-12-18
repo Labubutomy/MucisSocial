@@ -69,6 +69,20 @@ func (s *userService) UpdateProfile(ctx context.Context, userID string, req *dom
 	return user, nil
 }
 
+func (s *userService) SearchUsers(ctx context.Context, query string, limit int) ([]*domain.PublicUser, error) {
+	users, err := s.userRepo.SearchByUsername(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search users: %w", err)
+	}
+
+	publicUsers := make([]*domain.PublicUser, len(users))
+	for i, user := range users {
+		publicUsers[i] = user.ToPublicUser()
+	}
+
+	return publicUsers, nil
+}
+
 type searchHistoryService struct {
 	searchHistoryRepo domain.SearchHistoryRepository
 }
