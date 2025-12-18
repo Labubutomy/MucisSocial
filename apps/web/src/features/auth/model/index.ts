@@ -169,6 +169,8 @@ const protectedRouteNames: Array<keyof typeof routes> = [
   'playlistCreate',
   'playlistAddTracks',
   'collection',
+  'friends',
+  'messages',
 ]
 
 const redirectToAuth = routes.auth.navigate.prepend(() => ({

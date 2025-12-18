@@ -93,6 +93,39 @@ export const fetchTracks = async (params: { filter?: string; limit?: number }) =
   return tracksWithArtists
 }
 
+export const fetchTracksByArtist = async (artistId: string, limit = 50) => {
+  const response = await gatewayClient.get<GatewayTracksResponse>('/api/v1/tracks', {
+    params: {
+      artist_id: artistId,
+      limit,
+      offset: 0,
+    },
+  })
+
+  // Загружаем имена артистов для всех треков
+  const tracksWithArtists = await Promise.all(
+    response.data.tracks.map(async track => {
+      const mappedTrack = mapGatewayTrack(track)
+
+      // Загружаем имя артиста, если есть artist_id
+      if (mappedTrack.artist.id) {
+        try {
+          const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+            `/api/v1/artists/${mappedTrack.artist.id}`
+          )
+          mappedTrack.artist.name = artistResponse.data.name
+        } catch (error) {
+          console.warn(`Failed to fetch artist ${mappedTrack.artist.id}:`, error)
+        }
+      }
+
+      return mappedTrack
+    })
+  )
+
+  return tracksWithArtists
+}
+
 export const fetchTrackDetail = async (trackId: string) => {
   try {
     const response = await gatewayClient.get<GatewayTrackDetailResponse>(
@@ -230,7 +263,7 @@ interface GatewaySearchTracksResponse {
   offset: number
 }
 
-export const searchTracks = async (query: string, limit = 20) => {
+export const searchTracks = async (query: string, limit = 20): Promise<Track[]> => {
   // Use gateway for track search
   const response = await gatewayClient.get<GatewaySearchTracksResponse>('/api/v1/tracks/search', {
     params: {

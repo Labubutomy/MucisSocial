@@ -120,7 +120,12 @@ export const TrackPage = () => {
           onAddToPlaylist={track =>
             console.info('Добавить трек в плейлист', track.id, 'из', trackParams.trackId)
           }
-          onGoToArtist={artistId => console.info('Открыть артиста', artistId)}
+          onGoToArtist={artistId => {
+            routes.artist.navigate({
+              params: { artistId },
+              query: {},
+            })
+          }}
           onGoToAlbum={albumId => console.info('Открыть альбом', albumId)}
           onSkip={isActiveTrack ? skipTrack : undefined}
           onOpenQueue={() => setIsQueueOpen(true)}

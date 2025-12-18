@@ -26,6 +26,7 @@ export const AppHeader = () => {
     user,
     navigateToHome,
     navigateToProfile,
+    navigateToMessages,
     navigateToAuth,
     changeQuery,
     setFocus,
@@ -40,6 +41,7 @@ export const AppHeader = () => {
     user: $user,
     navigateToHome: routes.home.navigate,
     navigateToProfile: routes.profile.navigate,
+    navigateToMessages: routes.messages.navigate,
     navigateToAuth: routes.auth.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
@@ -166,6 +168,28 @@ export const AppHeader = () => {
         </form>
         {isAuthenticated ? (
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => navigateToMessages({ params: {}, query: {} })}
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60"
+              aria-label="Чаты"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M8 10h.01" />
+                <path d="M12 10h.01" />
+                <path d="M16 10h.01" />
+              </svg>
+            </button>
             <button
               type="button"
               onClick={() => navigateToProfile({ params: {}, query: {} })}

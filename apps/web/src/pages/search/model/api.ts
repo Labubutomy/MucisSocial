@@ -7,6 +7,11 @@ import type { PlaylistSummary } from '@entities/playlist'
 
 import { API_CONFIG } from '@shared/config/api'
 
+// Type guard для проверки, что SearchResult является треком
+const isTrackResult = (
+  result: SearchResult
+): result is SearchResult & { type: 'track'; data: Track } => result.type === 'track'
+
 // Use gateway for artists/search, tracks/search and me/search-history, mock-api for playlists
 const gatewayClient = createApiClient(API_CONFIG.gateway)
 const mockClient = createApiClient(API_CONFIG.mockApi)
@@ -95,8 +100,8 @@ const mapPlaylist = (item: PlaylistsResponse['items'][number]): SearchResult => 
 })
 
 export const fetchTrendingQueries = async () => {
-  // Not available in gateway, use mock-api
-  const response = await mockClient.get<TrendingResponse>('/api/v1/tracks/search/trending')
+  // Use gateway for trending queries
+  const response = await gatewayClient.get<TrendingResponse>('/api/v1/tracks/search/trending')
   return response.data.items.map((item, index) => ({
     id: `trend-${index}`,
     label: item.query,
@@ -145,7 +150,27 @@ export const fetchSearchResults = async (query: string) => {
   // Process tracks response (ignore if failed)
   let trackResults: SearchResult[] = []
   if (results[0].status === 'fulfilled' && results[0].value?.data) {
-    trackResults = (results[0].value.data.items || []).map(mapGatewayTrack)
+    const mappedTracks = (results[0].value.data.items || []).map(mapGatewayTrack)
+    // Загружаем имена артистов для всех треков
+    trackResults = await Promise.all(
+      mappedTracks.map(async track => {
+        // Проверяем, что это трек, а не артист или плейлист
+        if (isTrackResult(track)) {
+          if (track.data.artist?.id) {
+            try {
+              const artistResponse = await gatewayClient.get<ArtistSearchResponse['items'][number]>(
+                `/api/v1/artists/${track.data.artist.id}`
+              )
+              // Обновляем имя артиста
+              track.data.artist.name = artistResponse.data.name
+            } catch (error) {
+              console.warn(`Failed to fetch artist ${track.data.artist.id}:`, error)
+            }
+          }
+        }
+        return track
+      })
+    )
   }
 
   // Process artists response (ignore if failed)

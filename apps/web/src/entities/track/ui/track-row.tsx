@@ -3,6 +3,7 @@ import type { Track } from '@entities/track/model/types'
 import { cn } from '@shared/lib/cn'
 import { IconButton } from '@shared/ui/icon-button'
 import { AddToQueueButton } from '@widgets/queue'
+import { routes } from '@shared/router'
 
 export interface TrackRowProps {
   track: Track
@@ -117,9 +118,25 @@ export const TrackRow = memo(
             <span className="text-sm font-semibold text-foreground md:text-base">
               {track.title}
             </span>
+            {track.artist.id ? (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  routes.artist.navigate({
+                    params: { artistId: track.artist.id },
+                    query: {},
+                  })
+                }}
+                className="w-fit text-xs text-muted-foreground transition hover:text-foreground text-left"
+              >
+                {track.artist.name}
+              </button>
+            ) : (
             <span className="w-fit text-xs text-muted-foreground transition hover:text-foreground">
               {track.artist.name}
             </span>
+            )}
           </div>
         </button>
         <div className="hidden items-center justify-end text-xs text-muted-foreground md:flex">

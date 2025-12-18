@@ -4,6 +4,7 @@ import { cn } from '@shared/lib/cn'
 import { Card } from '@shared/ui/card'
 import { IconButton } from '@shared/ui/icon-button'
 import { AddToQueueButton } from '@widgets/queue'
+import { routes } from '@shared/router'
 
 export interface TrackCardProps {
   track: Track
@@ -94,9 +95,25 @@ export const TrackCard = memo(
             <span className="text-base font-semibold text-foreground md:text-lg">
               {track.title}
             </span>
-            <span className="w-fit text-sm text-muted-foreground transition hover:text-foreground">
-              {track.artist.name}
-            </span>
+            {track.artist.id ? (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  routes.artist.navigate({
+                    params: { artistId: track.artist.id },
+                    query: {},
+                  })
+                }}
+                className="w-fit text-sm text-muted-foreground transition hover:text-foreground text-left"
+              >
+                {track.artist.name}
+              </button>
+            ) : (
+              <span className="w-fit text-sm text-muted-foreground transition hover:text-foreground">
+                {track.artist.name}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 px-2 pb-1">

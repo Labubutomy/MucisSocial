@@ -86,6 +86,37 @@ interface GatewayArtistResponse {
  * @param userId User ID
  * @returns Object with topGenres (array of genre names) and topArtists (array of artist names)
  */
+interface GatewayUserResponse {
+  id: string
+  username: string
+  avatar_url?: string
+}
+
+/**
+ * Fetches user information by ID
+ * @param userId User ID
+ * @returns User profile with id, username, and avatarUrl
+ */
+export const fetchUserById = async (
+  userId: string
+): Promise<{
+  id: string
+  username: string
+  avatarUrl?: string
+}> => {
+  try {
+    const response = await gatewayClient.get<GatewayUserResponse>(`/api/v1/users/${userId}`)
+    return {
+      id: response.data.id,
+      username: response.data.username,
+      avatarUrl: response.data.avatar_url,
+    }
+  } catch (error) {
+    console.error(`Failed to fetch user ${userId}:`, error)
+    throw error
+  }
+}
+
 export const fetchUserTaste = async (
   userId: string
 ): Promise<{
