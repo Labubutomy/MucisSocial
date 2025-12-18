@@ -26,6 +26,7 @@ func main() {
 	trackStore := store.NewInMemoryTrackStore()
 	userProfileStore := store.NewInMemoryUserProfileStore()
 	globalStatsStore := store.NewInMemoryGlobalStatsStore()
+	searchQueryStore := store.NewInMemorySearchQueryStore()
 
 	// Initialize MinIO backup
 	backupStore, err := store.NewMinIOBackupStore(
@@ -36,6 +37,7 @@ func main() {
 		trackStore,
 		userProfileStore,
 		globalStatsStore,
+		searchQueryStore,
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize MinIO backup: %v", err)
@@ -111,7 +113,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := api.NewServer(cfg.HTTPPort, recEngine, userProfileStore, trackStore, globalStatsStore)
+	server := api.NewServer(cfg.HTTPPort, recEngine, userProfileStore, trackStore, globalStatsStore, searchQueryStore)
 
 	// Add ingest endpoints for testing without Kafka
 	server.AddIngestEndpoints(trackStore, userProfileStore, globalStatsStore)
