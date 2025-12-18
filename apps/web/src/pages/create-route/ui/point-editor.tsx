@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Button } from '@shared/ui/button'
 import type { RoutePoint } from '@features/routes'
+import { fetchTrackDetail } from '@entities/track/api'
+import type { Track } from '@entities/track/model/types'
 
 interface PointEditorProps {
   point: RoutePoint
@@ -20,6 +22,23 @@ export const PointEditor = ({
   onSelectTrack,
 }: PointEditorProps) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [track, setTrack] = useState<Track | null>(null)
+  const [trackLoading, setTrackLoading] = useState(false)
+
+  useEffect(() => {
+    if (point.track_id) {
+      setTrackLoading(true)
+      fetchTrackDetail(point.track_id)
+        .then(setTrack)
+        .catch(error => {
+          console.warn('Failed to load track:', error)
+          setTrack(null)
+        })
+        .finally(() => setTrackLoading(false))
+    } else {
+      setTrack(null)
+    }
+  }, [point.track_id])
 
   return (
     <Card padding="md" className="space-y-4">
@@ -87,7 +106,13 @@ export const PointEditor = ({
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Трек</label>
             <Button type="button" variant="outline" className="w-full" onClick={onSelectTrack}>
-              {point.track_id ? `Трек выбран (${point.track_id.slice(0, 8)}...)` : 'Выбрать трек'}
+              {trackLoading
+                ? 'Загрузка...'
+                : track
+                  ? `${track.title} - ${track.artist.name}`
+                  : point.track_id
+                    ? `Трек выбран (${point.track_id.slice(0, 8)}...)`
+                    : 'Выбрать трек'}
             </Button>
           </div>
         </div>

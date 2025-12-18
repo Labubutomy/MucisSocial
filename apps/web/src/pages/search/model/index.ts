@@ -13,6 +13,9 @@ import {
 
 export const queryChanged = createEvent<string>()
 export const searchSubmitted = createEvent()
+
+// Debounced search event (1 секунда задержки)
+const debouncedSearch = createEvent<string>()
 export const historyCleared = createEvent()
 export const historyItemSelected = createEvent<SearchHistoryItem>()
 export const trendingSelected = createEvent<{ id: string; label: string }>()
@@ -64,30 +67,10 @@ const $rawResults = createStore<SearchResult[]>([])
   .on(searchFx.doneData, (_, results) => results)
   .reset(historyCleared)
 
-export const $results = combine($query, $likes, $rawResults, (query, likes, results) => {
-  const lowered = query.trim().toLowerCase()
-  const filtered = lowered
-    ? results.filter(result => {
-        switch (result.type) {
-          case 'track':
-            return (
-              result.data.title.toLowerCase().includes(lowered) ||
-              result.data.artist.name.toLowerCase().includes(lowered)
-            )
-          case 'artist':
-            return result.data.name.toLowerCase().includes(lowered)
-          case 'playlist':
-            return (
-              result.data.title.toLowerCase().includes(lowered) ||
-              result.data.description?.toLowerCase().includes(lowered)
-            )
-          default:
-            return false
-        }
-      })
-    : results
-
-  return filtered.map(result =>
+export const $results = combine($query, $likes, $rawResults, (_, likes, results) => {
+  // Backend уже фильтрует результаты по запросу (включая жанр),
+  // поэтому здесь просто применяем фильтр по лайкам
+  return results.map(result =>
     result.type === 'track'
       ? {
           ...result,
@@ -148,6 +131,31 @@ sample({
   source: $query,
   filter: query => Boolean(query.trim()),
   fn: query => query.trim(),
+  target: [searchFx, addHistoryFx],
+})
+
+// Debounced search: автоматический поиск через 1 секунду после изменения запроса
+sample({
+  clock: queryChanged,
+  source: $query,
+  filter: query => Boolean(query.trim() && query.length >= 2),
+  fn: query => query.trim(),
+  target: debouncedSearch,
+})
+
+// Debounce для автоматического поиска (1 секунда)
+const debouncedSearchFx = createEffect(async (query: string) => {
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  return query
+})
+
+sample({
+  clock: debouncedSearch,
+  target: debouncedSearchFx,
+})
+
+sample({
+  clock: debouncedSearchFx.doneData,
   target: [searchFx, addHistoryFx],
 })
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@shared/ui/card'
 import { Input } from '@shared/ui/input'
 import { Button } from '@shared/ui/button'
@@ -15,6 +15,29 @@ export const TrackSelector = ({ onSelect, onClose, currentTrackId }: TrackSelect
   const [searchQuery, setSearchQuery] = useState('')
   const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
+
+  // Debounce для поиска треков (1 секунда)
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setTracks([])
+      return
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const results = await searchTracks(searchQuery, 20)
+        setTracks(results)
+      } catch (error) {
+        console.error('Failed to search tracks:', error)
+        setTracks([])
+      } finally {
+        setLoading(false)
+      }
+    }, 1000)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery])
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return

@@ -4,6 +4,9 @@ import { Card } from '@shared/ui/card'
 import { Button } from '@shared/ui/button'
 import { routes } from '@shared/router'
 import { $user, signOut } from '@features/auth/model'
+import { tabChanged } from '@pages/home/model'
+import { searchSubmitted } from '@pages/search/model'
+import { searchArtists } from '@entities/artist/api'
 import {
   $myPlaylists,
   fetchMyPlaylistsFx,
@@ -22,7 +25,7 @@ export const ProfilePage = () => {
     goToCurations,
     goToSession,
     goToRoutes,
-    goToCreateRoute,
+    goToFriends,
     goToHome,
     handleSignOut,
   } = useUnit({
@@ -35,7 +38,7 @@ export const ProfilePage = () => {
     goToCurations: routes.curations.navigate,
     goToSession: routes.session.navigate,
     goToRoutes: routes.routes.navigate,
-    goToCreateRoute: routes.routeCreate.navigate,
+    goToFriends: routes.friends.navigate,
     goToHome: routes.home.navigate,
     handleSignOut: signOut,
   })
@@ -64,8 +67,33 @@ export const ProfilePage = () => {
                 }
               : user.musicTasteSummary,
           }}
-          onSelectGenre={genre => console.info('Выбрать жанр', genre)}
-          onSelectArtist={artist => console.info('Выбрать артиста', artist)}
+          onSelectGenre={genre => {
+            // Открываем страницу поиска с фильтром по жанру
+            routes.search.navigate({ params: {}, query: { q: genre } })
+            // После навигации выполняем поиск
+            setTimeout(() => {
+              searchSubmitted()
+            }, 100)
+          }}
+          onSelectArtist={async artist => {
+            // Ищем артиста по имени, чтобы получить его ID
+            try {
+              const artists = await searchArtists(artist, 1)
+              if (artists.length > 0) {
+                routes.artist.navigate({
+                  params: { artistId: artists[0].id },
+                  query: {},
+                })
+              } else {
+                // Если не нашли, открываем страницу поиска
+                routes.search.navigate({ params: {}, query: { q: artist, type: 'artist' } })
+              }
+            } catch (error) {
+              console.error('Failed to find artist:', error)
+              // Fallback: открываем страницу поиска
+              routes.search.navigate({ params: {}, query: { q: artist, type: 'artist' } })
+            }
+          }}
         />
       </div>
 
@@ -87,10 +115,10 @@ export const ProfilePage = () => {
           </Button>
           <Button
             variant="outline"
-            onClick={() => goToCreateRoute({ params: {}, query: {} })}
+            onClick={() => goToFriends({ params: {}, query: {} })}
             className="w-full"
           >
-            Создать маршрут
+            Найти друзей
           </Button>
         </div>
       </Card>
@@ -119,7 +147,14 @@ export const ProfilePage = () => {
         <Card
           padding="lg"
           className="cursor-pointer space-y-4 bg-secondary/20 transition hover:bg-secondary/30 hover:shadow-lg"
-          onClick={() => goToHome({ params: {}, query: {} })}
+          onClick={() => {
+            // Открываем главную страницу и переключаемся на вкладку "Рекомендации"
+            goToHome({ params: {}, query: {} })
+            // Используем setTimeout, чтобы навигация произошла перед переключением вкладки
+            setTimeout(() => {
+              tabChanged('recommended')
+            }, 100)
+          }}
         >
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.4em] text-primary">Рекомендации</p>
