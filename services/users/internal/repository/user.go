@@ -215,3 +215,48 @@ func (r *userRepository) UsernameExists(ctx context.Context, username string) (b
 	}
 	return count > 0, nil
 }
+
+func (r *userRepository) SearchByUsername(ctx context.Context, query string, limit int) ([]*domain.User, error) {
+	searchPattern := "%" + query + "%"
+	sqlQuery := `
+		SELECT u.id, u.username, u.email, u.password_hash, u.avatar_url, u.created_at, u.updated_at,
+		       COALESCE(array_agg(DISTINCT mtg.genre) FILTER (WHERE mtg.genre IS NOT NULL), '{}') as top_genres,
+		       COALESCE(array_agg(DISTINCT mta.artist) FILTER (WHERE mta.artist IS NOT NULL), '{}') as top_artists
+		FROM users u
+		LEFT JOIN music_taste_genres mtg ON u.id = mtg.user_id
+		LEFT JOIN music_taste_artists mta ON u.id = mta.user_id
+		WHERE u.username ILIKE $1
+		GROUP BY u.id, u.username, u.email, u.password_hash, u.avatar_url, u.created_at, u.updated_at
+		ORDER BY u.username
+		LIMIT $2`
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, searchPattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		user := &domain.User{}
+		var topGenres, topArtists pq.StringArray
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.PasswordHash,
+			&user.AvatarURL, &user.CreatedAt, &user.UpdatedAt,
+			&topGenres, &topArtists)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(topGenres) > 0 || len(topArtists) > 0 {
+			user.MusicTasteSummary = &domain.MusicTasteSummary{
+				TopGenres:  []string(topGenres),
+				TopArtists: []string(topArtists),
+			}
+		}
+
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}

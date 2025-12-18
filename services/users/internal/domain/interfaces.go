@@ -15,6 +15,7 @@ type UserRepository interface {
 	Delete(ctx context.Context, id string) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
+	SearchByUsername(ctx context.Context, query string, limit int) ([]*User, error)
 }
 
 type SearchHistoryRepository interface {
@@ -56,6 +57,7 @@ type UserService interface {
 	GetUserByID(ctx context.Context, id string) (*PublicUser, error)
 	GetMe(ctx context.Context, userID string) (*User, error)
 	UpdateProfile(ctx context.Context, userID string, req *UpdateProfileRequest) (*User, error)
+	SearchUsers(ctx context.Context, query string, limit int) ([]*PublicUser, error)
 }
 
 type SearchHistoryService interface {

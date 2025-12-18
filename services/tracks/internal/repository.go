@@ -104,7 +104,7 @@ func (r *Repository) List(ctx context.Context, limit, offset int, artistID *uuid
 	return tracks, nil
 }
 
-// Search поиск треков по названию
+// Search поиск треков по названию и жанру
 func (r *Repository) Search(ctx context.Context, query string, limit, offset int) ([]*Track, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -118,8 +118,10 @@ func (r *Repository) Search(ctx context.Context, query string, limit, offset int
         SELECT t.id, t.title, t.genre, t.audio_url, t.cover_url,
                t.duration_seconds, t.status, t.created_at, t.updated_at
         FROM tracks t
-        WHERE t.status = $1 AND t.title ILIKE $2
-        ORDER BY t.created_at DESC
+        WHERE t.status = $1 AND (t.title ILIKE $2 OR t.genre ILIKE $2)
+        ORDER BY 
+            CASE WHEN t.title ILIKE $2 THEN 1 ELSE 2 END,
+            t.created_at DESC
         LIMIT $3 OFFSET $4
     `
 

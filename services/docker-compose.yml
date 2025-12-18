@@ -396,6 +396,8 @@ services:
       - PLAYLIST_SERVICE_URL=playlist-service:50054
       - RECOMMENDATIONS_SERVICE_URL=http://recommendations:8080
       - ROUTES_SERVICE_URL=http://routes-service:8080
+      - MESSAGING_SERVICE_URL=http://messaging-service:8080
+      - FRIENDS_SERVICE_URL=http://friends-service:8080
 
   # Recommendations Service
   recommendations:
@@ -584,6 +586,102 @@ services:
       retries: 3
       start_period: 30s
 
+  # PostgreSQL for Friends Service
+  postgres-friends:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-friends
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_friends
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres_friends_data:/var/lib/postgresql/data
+      - ./friends/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Messaging Service (FastAPI)
+
+  # PostgreSQL for Messaging Service
+  postgres-messaging:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-messaging
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_messaging
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_messaging_data:/var/lib/postgresql/data
+      - ./messaging/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Messaging Service (FastAPI)
+  messaging-service:
+    build:
+      context: ./messaging
+    container_name: music-social-messaging
+    ports:
+      - "8085:8080"
+    environment:
+      - MESSAGING_HOST=0.0.0.0
+      - MESSAGING_PORT=8080
+      - MESSAGING_DATABASE_URL=postgres://postgres:password@postgres-messaging:5432/music_social_messaging?sslmode=disable
+      - MESSAGING_JWT_SECRET=your-super-secret-access-key-change-in-production
+      - MESSAGING_JWT_ALGORITHM=HS256
+    depends_on:
+      postgres-messaging:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Friends Service (FastAPI)
+  friends-service:
+    build:
+      context: ./friends
+    container_name: music-social-friends
+    ports:
+      - "8086:8080"
+    environment:
+      - FRIENDS_HOST=0.0.0.0
+      - FRIENDS_PORT=8080
+      - FRIENDS_DATABASE_URL=postgres://postgres:password@postgres-friends:5432/music_social_friends?sslmode=disable
+      - FRIENDS_JWT_SECRET=your-super-secret-access-key-change-in-production
+      - FRIENDS_JWT_ALGORITHM=HS256
+    depends_on:
+      postgres-friends:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
 volumes:
   postgres_data:
   postgres_artists_data:
@@ -592,6 +690,8 @@ volumes:
   postgres_groups_data:
   postgres_playback_queue_data:
   postgres_routes_data:
+  postgres_messaging_data:
+  postgres_friends_data:
 
 networks:
   music-network:

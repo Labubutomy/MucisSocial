@@ -138,6 +138,27 @@ func (h *UserServiceHandler) GetUserById(ctx context.Context, req *pb.GetUserByI
 	}, nil
 }
 
+func (h *UserServiceHandler) SearchUsers(ctx context.Context, req *pb.SearchUsersRequest) (*pb.SearchUsersResponse, error) {
+	limit := int(req.Limit)
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+
+	users, err := h.userService.SearchUsers(ctx, req.Query, limit)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to search users: %v", err)
+	}
+
+	pbUsers := make([]*pb.PublicUser, len(users))
+	for i, user := range users {
+		pbUsers[i] = convertPublicUserToPB(user)
+	}
+
+	return &pb.SearchUsersResponse{
+		Users: pbUsers,
+	}, nil
+}
+
 // Search history methods
 func (h *UserServiceHandler) GetSearchHistory(ctx context.Context, req *pb.GetSearchHistoryRequest) (*pb.GetSearchHistoryResponse, error) {
 	limit := int(req.Limit)
