@@ -22,6 +22,7 @@ type MinIOBackupStore struct {
 	trackStore       TrackStore
 	userProfileStore UserProfileStore
 	globalStatsStore GlobalStatsStore
+	searchQueryStore SearchQueryStore
 }
 
 type BackupData struct {
@@ -29,6 +30,7 @@ type BackupData struct {
 	UserProfiles   map[string]*models.UserProfile  `json:"user_profiles"`
 	GlobalStats     map[string]int                 `json:"global_stats"`
 	MonthlyStats    map[string]int                 `json:"monthly_stats"`
+	SearchQueries   map[string]SearchQueryData     `json:"search_queries"`
 	Timestamp       time.Time                      `json:"timestamp"`
 }
 
@@ -37,6 +39,7 @@ func NewMinIOBackupStore(
 	trackStore TrackStore,
 	userProfileStore UserProfileStore,
 	globalStatsStore GlobalStatsStore,
+	searchQueryStore SearchQueryStore,
 ) (*MinIOBackupStore, error) {
 
 	client, err := minio.New(endpoint, &minio.Options{
@@ -67,6 +70,7 @@ func NewMinIOBackupStore(
 		trackStore:       trackStore,
 		userProfileStore: userProfileStore,
 		globalStatsStore: globalStatsStore,
+		searchQueryStore: searchQueryStore,
 	}
 
 	return backup, nil
@@ -133,6 +137,14 @@ func (s *MinIOBackupStore) LoadFromBackup() error {
 		}
 	}
 
+	// Restore search queries
+	if memSearchStore, ok := s.searchQueryStore.(*InMemorySearchQueryStore); ok {
+		if backup.SearchQueries != nil {
+			memSearchStore.Restore(backup.SearchQueries)
+			log.Printf("Restored search queries from backup")
+		}
+	}
+
 	log.Printf("Successfully loaded backup from %v", backup.Timestamp)
 	return nil
 }
@@ -147,6 +159,7 @@ func (s *MinIOBackupStore) SaveBackup() error {
 		UserProfiles:  make(map[string]*models.UserProfile),
 		GlobalStats:   make(map[string]int),
 		MonthlyStats:  make(map[string]int),
+		SearchQueries: make(map[string]SearchQueryData),
 		Timestamp:     time.Now(),
 	}
 
@@ -169,6 +182,11 @@ func (s *MinIOBackupStore) SaveBackup() error {
 		backup.MonthlyStats = memStatsStore.GetAllMonthlyPlayCounts()
 	}
 
+	// Collect search queries
+	if memSearchStore, ok := s.searchQueryStore.(*InMemorySearchQueryStore); ok {
+		backup.SearchQueries = memSearchStore.GetAll()
+	}
+
 	// Serialize backup
 	data, err := json.MarshalIndent(backup, "", "  ")
 	if err != nil {
@@ -184,8 +202,15 @@ func (s *MinIOBackupStore) SaveBackup() error {
 		return fmt.Errorf("failed to upload backup: %w", err)
 	}
 
-	log.Printf("Successfully saved backup: %d tracks, %d users, %d all-time stats, %d monthly stats",
-		len(backup.Tracks), len(backup.UserProfiles), len(backup.GlobalStats), len(backup.MonthlyStats))
+	searchQueriesCount := 0
+	if len(backup.SearchQueries) > 0 {
+		if data, ok := backup.SearchQueries["data"]; ok {
+			searchQueriesCount = len(data.QueryCounts)
+		}
+	}
+
+	log.Printf("Successfully saved backup: %d tracks, %d users, %d all-time stats, %d monthly stats, %d search queries",
+		len(backup.Tracks), len(backup.UserProfiles), len(backup.GlobalStats), len(backup.MonthlyStats), searchQueriesCount)
 
 	return nil
 }
@@ -196,12 +221,9 @@ func (s *MinIOBackupStore) StartPeriodicBackup(interval time.Duration) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				if err := s.SaveBackup(); err != nil {
-					log.Printf("Periodic backup failed: %v", err)
-				}
+		for range ticker.C {
+			if err := s.SaveBackup(); err != nil {
+				log.Printf("Periodic backup failed: %v", err)
 			}
 		}
 	}()

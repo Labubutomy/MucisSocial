@@ -19,6 +19,7 @@ type Server struct {
 	userProfileStore store.UserProfileStore
 	trackStore       store.TrackStore
 	globalStatsStore store.GlobalStatsStore
+	searchQueryStore store.SearchQueryStore
 	router           *gin.Engine
 }
 
@@ -29,6 +30,7 @@ func NewServer(
 	userProfileStore store.UserProfileStore,
 	trackStore store.TrackStore,
 	globalStatsStore store.GlobalStatsStore,
+	searchQueryStore store.SearchQueryStore,
 ) *Server {
 	s := &Server{
 		port:             port,
@@ -36,6 +38,7 @@ func NewServer(
 		userProfileStore: userProfileStore,
 		trackStore:       trackStore,
 		globalStatsStore: globalStatsStore,
+		searchQueryStore: searchQueryStore,
 	}
 
 	s.setupRoutes()
@@ -53,6 +56,8 @@ func (s *Server) setupRoutes() {
 	s.router.GET("/charts/top", s.chartsTopHandler)
 	s.router.GET("/tracks/new", s.newReleasesHandler)
 	s.router.GET("/users/:user_id/taste", s.userTasteHandler)
+	s.router.GET("/search/trending", s.trendingQueriesHandler)
+	s.router.POST("/search/query", s.recordSearchQueryHandler)
 	s.router.GET("/debug/tracks", s.debugTracksHandler)
 	s.router.GET("/debug/users/:user_id", s.debugUserHandler)
 }
@@ -315,6 +320,50 @@ func (s *Server) userTasteHandler(c *gin.Context) {
 		TopGenres: topGenres,
 		TopArtists: topArtists,
 	})
+}
+
+// TrendingQueriesResponse represents the trending queries API response
+type TrendingQueriesResponse struct {
+	Items []store.TrendingQuery `json:"items"`
+}
+
+func (s *Server) trendingQueriesHandler(c *gin.Context) {
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 50 {
+			limit = parsed
+		}
+	}
+
+	days := 30 // Default: last 30 days
+	if d := c.Query("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
+			days = parsed
+		}
+	}
+
+	trending := s.searchQueryStore.GetTrendingQueries(limit, days)
+
+	c.JSON(http.StatusOK, TrendingQueriesResponse{
+		Items: trending,
+	})
+}
+
+// RecordSearchQueryRequest represents the request to record a search query
+type RecordSearchQueryRequest struct {
+	Query string `json:"query" binding:"required"`
+}
+
+func (s *Server) recordSearchQueryHandler(c *gin.Context) {
+	var req RecordSearchQueryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.searchQueryStore.Increment(req.Query)
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 // AddIngestEndpoints adds HTTP endpoints for manual event ingestion
