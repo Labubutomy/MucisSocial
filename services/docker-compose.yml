@@ -90,10 +90,14 @@ services:
       CDN_LOG_LEVEL: INFO
       CDN_LOG_REQUESTS: "true"
       CDN_LOG_CACHE_STATS: "true"
+      CDN_KAFKA_ENABLED: "true"
+      CDN_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      CDN_LISTENING_EVENTS_TOPIC: listening-events
     networks:
       - music-network
     depends_on:
       - streaming
+      - redpanda
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -254,10 +258,14 @@ services:
       - DATABASE_URL=postgres://postgres:password@postgres-tracks:5432/music_social_tracks?sslmode=disable
       - LOG_LEVEL=info
       - ENVIRONMENT=development
+      - KAFKA_BROKERS=redpanda:9092
+      - TRACK_EVENTS_TOPIC=track-events
     ports:
       - "50053:50053"
     depends_on:
       postgres-tracks:
+        condition: service_healthy
+      redpanda:
         condition: service_healthy
     networks:
       - music-network
@@ -361,6 +369,7 @@ services:
   playback-queue-service:
     build:
       context: ./playback_queue
+      dockerfile: Dockerfile
     container_name: music-social-playback-queue
     environment:
       - GRPC_PORT=50056
@@ -422,6 +431,9 @@ services:
       - tracks-service
       - playlist-service
       - upload
+      - recommendations
+      - routes-service
+      - playback-queue-service
     networks:
       - music-network
     restart: unless-stopped
@@ -432,6 +444,293 @@ services:
       - ARTISTS_SERVICE_URL=artists-service:50052
       - TRACKS_SERVICE_URL=http://tracks-service:8080
       - PLAYLIST_SERVICE_URL=playlist-service:50054
+      - RECOMMENDATIONS_SERVICE_URL=http://recommendations:8080
+      - ROUTES_SERVICE_URL=http://routes-service:8080
+      - MESSAGING_SERVICE_URL=http://messaging-service:8080
+      - FRIENDS_SERVICE_URL=http://friends-service:8080
+
+  # Recommendations Service
+  recommendations:
+    build:
+      context: .
+      dockerfile: ./recommendations/Dockerfile
+    container_name: recommendations-service
+    environment:
+      - HTTP_PORT=8080
+      - KAFKA_BROKERS=redpanda:9092
+      - TRACK_EVENTS_TOPIC=track-events
+      - LISTENING_EVENTS_TOPIC=listening-events
+      - TRACKS_SERVICE_URL=http://tracks-service:8080
+      - BOOTSTRAP_ENABLED=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=recommendations
+      - BACKUP_INTERVAL=5m
+    ports:
+      - "8090:8080"
+    networks:
+      - music-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      tracks-service:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # WebSocket Gateway Service
+  ws-gateway:
+    build:
+      context: ./ws_gateway
+    container_name: music-social-ws-gateway
+    ports:
+      - "8001:8001"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - WS_GATEWAY_HOST=0.0.0.0
+      - WS_GATEWAY_PORT=8001
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+      - WS_GATEWAY_JWT_ALGORITHM=HS256
+      - WS_GATEWAY_REDIS_HOST=redis
+      - WS_GATEWAY_REDIS_PORT=6379
+      - WS_GATEWAY_KAFKA_BROKERS=redpanda:9092
+      - WS_GATEWAY_KAFKA_EVENTS_TOPIC=music-session-events
+      - WS_GATEWAY_KAFKA_SYNC_TOPIC=music-session-sync
+      - WS_GATEWAY_PING_INTERVAL=30
+      - WS_GATEWAY_LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database for Routes Service
+  postgres-routes:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-routes
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_routes
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_routes_data:/var/lib/postgresql/data
+      - ./routes/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Routes Service
+  routes-service:
+    build:
+      context: ./routes
+    container_name: music-social-routes
+    ports:
+      - "8083:8080"
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres-routes:5432/music_social_routes?sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-super-secret-access-key-change-in-production
+      - HOST=0.0.0.0
+      - PORT=8080
+    depends_on:
+      postgres-routes:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Route Session Service
+  route-session-service:
+    build:
+      context: ./route_session
+    container_name: music-social-route-session
+    ports:
+      - "8084:8080"
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres-routes:5432/music_social_routes?sslmode=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - KAFKA_EVENTS_TOPIC=route-session-events
+      - KAFKA_SYNC_TOPIC=route-session-sync
+      - ROUTES_SERVICE_URL=http://routes-service:8080
+      - HOST=0.0.0.0
+      - PORT=8080
+    depends_on:
+      postgres-routes:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      routes-service:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Session Service
+  session-service:
+    build:
+      context: ./session
+    container_name: music-social-session
+    ports:
+      - "8081:8080"
+      - "50060:50060"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    environment:
+      - SERVER_PORT=8080
+      - GRPC_PORT=50060
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DATABASE=music_sessions
+      - SPRING_DATA_MONGODB_URI=mongodb://mongodb:27017/music_sessions
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - KAFKA_EVENTS_TOPIC=music-session-events
+      - KAFKA_SYNC_TOPIC=music-session-sync
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/rooms/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # PostgreSQL for Friends Service
+  postgres-friends:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-friends
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_friends
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres_friends_data:/var/lib/postgresql/data
+      - ./friends/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Messaging Service (FastAPI)
+
+  # PostgreSQL for Messaging Service
+  postgres-messaging:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-messaging
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_messaging
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_messaging_data:/var/lib/postgresql/data
+      - ./messaging/sql/init_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Messaging Service (FastAPI)
+  messaging-service:
+    build:
+      context: ./messaging
+    container_name: music-social-messaging
+    ports:
+      - "8085:8080"
+    environment:
+      - MESSAGING_HOST=0.0.0.0
+      - MESSAGING_PORT=8080
+      - MESSAGING_DATABASE_URL=postgres://postgres:password@postgres-messaging:5432/music_social_messaging?sslmode=disable
+      - MESSAGING_JWT_SECRET=your-super-secret-access-key-change-in-production
+      - MESSAGING_JWT_ALGORITHM=HS256
+    depends_on:
+      postgres-messaging:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Friends Service (FastAPI)
+  friends-service:
+    build:
+      context: ./friends
+    container_name: music-social-friends
+    ports:
+      - "8086:8080"
+    environment:
+      - FRIENDS_HOST=0.0.0.0
+      - FRIENDS_PORT=8080
+      - FRIENDS_DATABASE_URL=postgres://postgres:password@postgres-friends:5432/music_social_friends?sslmode=disable
+      - FRIENDS_JWT_SECRET=your-super-secret-access-key-change-in-production
+      - FRIENDS_JWT_ALGORITHM=HS256
+    depends_on:
+      postgres-friends:
+        condition: service_healthy
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_data:
@@ -440,6 +739,9 @@ volumes:
   postgres_playlist_data:
   postgres_groups_data:
   postgres_playback_queue_data:
+  postgres_routes_data:
+  postgres_messaging_data:
+  postgres_friends_data:
 
 networks:
   music-network:

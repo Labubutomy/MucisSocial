@@ -25,6 +25,8 @@ func main() {
 	dbURL := getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/tracks_db?sslmode=disable")
 	httpPort := getEnv("PORT", "8080")
 	grpcPort := getEnv("GRPC_PORT", "50051")
+	kafkaBrokers := getEnv("KAFKA_BROKERS", "localhost:9092")
+	trackEventsTopic := getEnv("TRACK_EVENTS_TOPIC", "track-events")
 
 	// Connect to DB
 	db, err := sql.Open("postgres", dbURL)
@@ -39,9 +41,26 @@ func main() {
 	}
 	log.Println("Connected to database")
 
+	// Initialize Kafka EventProducer (optional - only if Kafka is configured)
+	var eventProducer *internal.EventProducer
+	if kafkaBrokers != "" {
+		brokerList := []string{kafkaBrokers} // Support single broker or comma-separated list
+		eventProducer = internal.NewEventProducer(brokerList, trackEventsTopic)
+		defer eventProducer.Close()
+		log.Printf("Kafka EventProducer initialized (brokers: %s, topic: %s)", kafkaBrokers, trackEventsTopic)
+	} else {
+		log.Println("Kafka EventProducer disabled (KAFKA_BROKERS not set)")
+	}
+
 	// Initialize layers
 	repo := internal.NewRepository(db)
 	service := internal.NewService(repo)
+
+	// Set event producer if available
+	if eventProducer != nil {
+		service.SetEventProducer(eventProducer)
+	}
+
 	httpHandler := internal.NewHandler(service)
 	grpcHandler := internal.NewGRPCHandler(service)
 

@@ -97,3 +97,15 @@
   font-weight: 700;
   font-style: normal;
 }
+
+/* MapLibre GL map styles */
+.maplibregl-map {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.maplibregl-popup-content {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-radius: var(--radius);
+}

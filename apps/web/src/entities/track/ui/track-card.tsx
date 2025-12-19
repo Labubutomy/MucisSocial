@@ -3,6 +3,8 @@ import type { Track } from '@entities/track/model/types'
 import { cn } from '@shared/lib/cn'
 import { Card } from '@shared/ui/card'
 import { IconButton } from '@shared/ui/icon-button'
+import { AddToQueueButton } from '@widgets/queue'
+import { routes } from '@shared/router'
 
 export interface TrackCardProps {
   track: Track
@@ -93,9 +95,25 @@ export const TrackCard = memo(
             <span className="text-base font-semibold text-foreground md:text-lg">
               {track.title}
             </span>
-            <span className="w-fit text-sm text-muted-foreground transition hover:text-foreground">
-              {track.artist.name}
-            </span>
+            {track.artist.id ? (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation()
+                  routes.artist.navigate({
+                    params: { artistId: track.artist.id },
+                    query: {},
+                  })
+                }}
+                className="w-fit text-sm text-muted-foreground transition hover:text-foreground text-left"
+              >
+                {track.artist.name}
+              </button>
+            ) : (
+              <span className="w-fit text-sm text-muted-foreground transition hover:text-foreground">
+                {track.artist.name}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 px-2 pb-1">
@@ -115,6 +133,7 @@ export const TrackCard = memo(
               <path d="m12 21-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3a4.5 4.5 0 0 1 3.57 1.75A4.5 4.5 0 0 1 14.64 3C17.72 3 20.14 5.42 20.14 8.5c0 3.78-3.4 6.86-8.55 11.18L12 21Z" />
             </svg>
           </IconButton>
+          <AddToQueueButton trackId={track.id} />
           <IconButton aria-label="Поделиться треком" onClick={handleShare}>
             <svg
               xmlns="http://www.w3.org/2000/svg"

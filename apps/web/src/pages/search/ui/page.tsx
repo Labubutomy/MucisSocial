@@ -77,7 +77,10 @@ export const SearchPage = () => {
   }
 
   const handleArtistOpen = (artist: Artist) => {
-    console.info('Открыть артиста', artist.id)
+    routes.artist.navigate({
+      params: { artistId: artist.id },
+      query: {},
+    })
   }
 
   const handleTrackOpen = (track: Track) => {
@@ -104,7 +107,10 @@ export const SearchPage = () => {
           </div>
           <SearchBar
             value={query}
-            onChange={event => changeQuery(event.target.value)}
+            onChange={event => {
+              changeQuery(event.target.value)
+              // Автоматический поиск с debounce (1 секунда) - выполняется в model через queryChanged
+            }}
             onSubmit={handleSearchSubmit}
           />
           <div className="flex flex-wrap gap-2 lg:hidden">

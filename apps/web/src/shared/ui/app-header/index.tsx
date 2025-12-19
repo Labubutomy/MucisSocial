@@ -3,7 +3,7 @@ import { useUnit } from 'effector-react'
 import { routes } from '@shared/router'
 import { cn } from '@shared/lib/cn'
 import { Avatar } from '@shared/ui/avatar'
-import { $isAuthenticated, $user, signOut } from '@features/auth'
+import { $isAuthenticated, $user } from '@features/auth'
 import {
   $query,
   $showDropdown,
@@ -26,13 +26,13 @@ export const AppHeader = () => {
     user,
     navigateToHome,
     navigateToProfile,
+    navigateToMessages,
     navigateToAuth,
     changeQuery,
     setFocus,
     setHover,
     submitSearch,
     selectSuggestion,
-    handleSignOut,
   } = useUnit({
     query: $query,
     suggestions: $suggestions,
@@ -41,13 +41,13 @@ export const AppHeader = () => {
     user: $user,
     navigateToHome: routes.home.navigate,
     navigateToProfile: routes.profile.navigate,
+    navigateToMessages: routes.messages.navigate,
     navigateToAuth: routes.auth.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
     setHover: hoverChanged,
     submitSearch: searchSubmitted,
     selectSuggestion: suggestionSelected,
-    handleSignOut: signOut,
   })
 
   // Generate initials from username
@@ -170,6 +170,28 @@ export const AppHeader = () => {
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <button
               type="button"
+              onClick={() => navigateToMessages({ params: {}, query: {} })}
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60"
+              aria-label="Чаты"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M8 10h.01" />
+                <path d="M12 10h.01" />
+                <path d="M16 10h.01" />
+              </svg>
+            </button>
+            <button
+              type="button"
               onClick={() => navigateToProfile({ params: {}, query: {} })}
               className={cn(
                 'flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60'
@@ -182,13 +204,6 @@ export const AppHeader = () => {
                 fallback={getInitials(user?.username)}
                 size="sm"
               />
-            </button>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="rounded-full border border-border/60 bg-secondary/40 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground transition hover:border-primary hover:bg-secondary/60 whitespace-nowrap"
-            >
-              Выйти
             </button>
           </div>
         ) : (

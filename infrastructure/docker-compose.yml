@@ -109,6 +109,44 @@ services:
       - music-network
     restart: "no"
 
+  # Redis for WebSocket Gateway
+  redis:
+    image: redis:7-alpine
+    container_name: music-social-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB for Session Service
+  mongodb:
+    image: mongo:7
+    container_name: music-social-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   minio_data:
     driver: local
+  mongodb_data:
+    driver: local
+
+networks:
+  music-network:
+    driver: bridge

@@ -1,17 +1,7 @@
-import axios from 'axios'
 import { combine, createEffect, createEvent, createStore, sample } from 'effector'
 import { routes } from '@shared/router'
 import { appStarted } from '@shared/config/init'
-import { API_CONFIG } from '@shared/config/api'
-
-const seeds = [
-  'Новые релизы',
-  'Неоновый фанк',
-  'Синтвейв ночь',
-  'Лоуфай для работы',
-  'Электронный чилл',
-  'Инди-поп плейлист',
-]
+import { fetchTrendingQueries } from '@pages/search/model/api'
 
 export const queryChanged = createEvent<string>()
 export const focusChanged = createEvent<boolean>()
@@ -34,13 +24,11 @@ export const $isHoveringList = createStore(false)
   .on(suggestionSelected, () => false)
 
 const fetchSuggestionSeedsFx = createEffect(async () => {
-  const response = await axios.get<{ items: Array<{ query: string }> }>(
-    `${API_CONFIG.mockApi}/api/v1/tracks/search/trending`
-  )
-  return response.data.items.map(item => item.query)
+  const trending = await fetchTrendingQueries()
+  return trending.map(item => item.label)
 })
 
-export const $suggestionSeeds = createStore(seeds).on(
+export const $suggestionSeeds = createStore<string[]>([]).on(
   fetchSuggestionSeedsFx.doneData,
   (_, values) => values
 )

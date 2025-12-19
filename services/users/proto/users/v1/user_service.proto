@@ -18,6 +18,7 @@ service UserService {
   rpc GetMe(GetMeRequest) returns (GetMeResponse);
   rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
   rpc GetUserById(GetUserByIdRequest) returns (GetUserByIdResponse);
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
   
   // Search history endpoints
   rpc GetSearchHistory(GetSearchHistoryRequest) returns (GetSearchHistoryResponse);
@@ -93,6 +94,15 @@ message GetUserByIdRequest {
 
 message GetUserByIdResponse {
   PublicUser user = 1;
+}
+
+message SearchUsersRequest {
+  string query = 1;
+  int32 limit = 2;
+}
+
+message SearchUsersResponse {
+  repeated PublicUser users = 1;
 }
 
 // Search History Messages

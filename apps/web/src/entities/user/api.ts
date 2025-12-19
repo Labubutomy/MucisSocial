@@ -59,3 +59,103 @@ export const fetchUserPlaylists = async (userId: string, limit = 24) => {
   )
   return response.data.items
 }
+
+// User taste statistics API response format
+interface GatewayUserTasteResponse {
+  user_id: string
+  top_genres: Array<{
+    genre: string
+    count: number
+  }>
+  top_artists: Array<{
+    artist_id: string
+    count: number
+  }>
+}
+
+// Gateway Artist response format
+interface GatewayArtistResponse {
+  id: string
+  name: string
+  avatar_url?: string
+  genres?: string[]
+}
+
+/**
+ * Fetches user taste statistics (top genres and artists)
+ * @param userId User ID
+ * @returns Object with topGenres (array of genre names) and topArtists (array of artist names)
+ */
+interface GatewayUserResponse {
+  id: string
+  username: string
+  avatar_url?: string
+}
+
+/**
+ * Fetches user information by ID
+ * @param userId User ID
+ * @returns User profile with id, username, and avatarUrl
+ */
+export const fetchUserById = async (
+  userId: string
+): Promise<{
+  id: string
+  username: string
+  avatarUrl?: string
+}> => {
+  try {
+    const response = await gatewayClient.get<GatewayUserResponse>(`/api/v1/users/${userId}`)
+    return {
+      id: response.data.id,
+      username: response.data.username,
+      avatarUrl: response.data.avatar_url,
+    }
+  } catch (error) {
+    console.error(`Failed to fetch user ${userId}:`, error)
+    throw error
+  }
+}
+
+export const fetchUserTaste = async (
+  userId: string
+): Promise<{
+  topGenres: string[]
+  topArtists: string[]
+}> => {
+  try {
+    const response = await gatewayClient.get<GatewayUserTasteResponse>(
+      `/api/v1/users/${userId}/taste`
+    )
+
+    // Extract genre names
+    const topGenres = response.data.top_genres.map(g => g.genre)
+
+    // Fetch artist names for top artists
+    const topArtists = await Promise.all(
+      response.data.top_artists.map(async artistStat => {
+        try {
+          const artistResponse = await gatewayClient.get<GatewayArtistResponse>(
+            `/api/v1/artists/${artistStat.artist_id}`
+          )
+          return artistResponse.data.name
+        } catch (error) {
+          console.warn(`Failed to fetch artist ${artistStat.artist_id}:`, error)
+          return `Unknown Artist (${artistStat.artist_id})`
+        }
+      })
+    )
+
+    return {
+      topGenres,
+      topArtists,
+    }
+  } catch (error) {
+    console.error('Failed to fetch user taste:', error)
+    // Return empty arrays on error
+    return {
+      topGenres: [],
+      topArtists: [],
+    }
+  }
+}

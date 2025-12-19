@@ -79,3 +79,4 @@ export const readSessionTokens = (): AuthSession | null => {
 }
 
 export const getAccessToken = () => getCookie(ACCESS_TOKEN_KEY)
+export const getRefreshToken = () => getCookie(REFRESH_TOKEN_KEY)

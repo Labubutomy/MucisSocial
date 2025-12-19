@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
-from typing import Any
+import re
+from typing import Any, TYPE_CHECKING
 
 import httpx
 from fastapi import Request, Response, status
@@ -10,7 +12,15 @@ from fastapi import Request, Response, status
 from core.cache import Cache, CacheEntry
 from core.config import Settings
 
+if TYPE_CHECKING:
+    from core.event_producer import ListeningEventProducer
+
 logger = logging.getLogger(__name__)
+
+# Pattern to extract track_id from resource path
+# Expected format: /origin/{artist_id}/{track_id}/transcoded/... or /{artist_id}/{track_id}/transcoded/...
+# We need the second UUID (track_id), not the first one (artist_id)
+TRACK_ID_PATTERN = re.compile(r"/(?:origin/)?[a-f0-9-]{36}/([a-f0-9-]{36})/transcoded", re.IGNORECASE)
 
 
 class CDNService:
@@ -23,6 +33,12 @@ class CDNService:
             timeout=httpx.Timeout(30.0, connect=10.0),
             follow_redirects=True,
         )
+        self._event_producer: ListeningEventProducer | None = None
+
+    def set_event_producer(self, producer: ListeningEventProducer) -> None:
+        """Set the Kafka event producer for listening events."""
+        self._event_producer = producer
+        logger.info("Event producer set on CDN service")
 
     def _get_cache_ttl(self, resource_path: str) -> float:
         """Determine cache TTL based on resource type."""
@@ -63,7 +79,12 @@ class CDNService:
         return "other"
 
     async def _forward_api_request(
-        self, method: str, url: str, *, params: dict[str, Any] | None = None, json: Any = None
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
     ) -> Response:
         try:
             response = await self._client.request(method, url, params=params, json=json)
@@ -78,12 +99,64 @@ class CDNService:
         # Preserve JSON payload and status
         content = response.content
         media_type = response.headers.get("content-type", "application/json")
-        return Response(content=content, status_code=response.status_code, media_type=media_type)
+        return Response(
+            content=content, status_code=response.status_code, media_type=media_type
+        )
+
+    def _extract_track_id(self, resource_path: str) -> str | None:
+        """Extract track_id from resource path using regex."""
+        match = TRACK_ID_PATTERN.search(resource_path)
+        return match.group(1) if match else None
+
+    def _extract_user_id(self, request: Request) -> str | None:
+        """Extract user_id from request headers or query params."""
+        # Check X-User-ID header first
+        user_id = request.headers.get("X-User-ID")
+        if user_id:
+            return user_id
+        # Check query params
+        user_id = request.query_params.get("user_id")
+        return user_id
+
+    def _is_media_segment(self, resource_path: str) -> bool:
+        """Check if resource is a media segment (triggers listening event)."""
+        return resource_path.endswith(".m4s") and "init" not in resource_path.lower()
+
+    def _is_master_playlist(self, resource_path: str) -> bool:
+        """Check if resource is a master playlist (triggers listening event on first request)."""
+        return resource_path.endswith("master.m3u8")
+
+    def _extract_quality_from_path(self, resource_path: str) -> str | None:
+        """Extract quality from path (e.g., /tracks/{id}/128kbps/...)."""
+        quality_match = re.search(r"/(\d+k(?:bps)?)/", resource_path, re.IGNORECASE)
+        if quality_match:
+            return quality_match.group(1).lower()
+        return None
+
+    async def _publish_listening_event(
+        self, track_id: str, user_id: str, resource_path: str
+    ) -> None:
+        """Publish track_listened event to Kafka (async, non-blocking)."""
+        if not self._event_producer or not self._event_producer.is_ready:
+            return
+
+        quality = self._extract_quality_from_path(resource_path)
+
+        # Fire and forget - don't block response
+        asyncio.create_task(
+            self._event_producer.publish_track_listened(
+                user_id=user_id,
+                track_id=track_id,
+                quality=quality,
+                source="cdn",
+            )
+        )
 
     async def serve_resource(self, resource_path: str, request: Request) -> Response:
         """
         Serve resource from cache or proxy to origin.
         Preserves original signed URL when proxying to origin.
+        Publishes listening events for media segments.
         """
         # Ensure resource_path starts with /
         if not resource_path.startswith("/"):
@@ -93,6 +166,16 @@ class CDNService:
         original_url = str(request.url)
         cache_key_url = original_url
 
+        # Extract track_id and user_id for potential listening event
+        track_id = self._extract_track_id(resource_path)
+        user_id = self._extract_user_id(request)
+        # Publish event for master playlist (start of playback) or media segments
+        should_publish_event = (
+            (self._is_master_playlist(resource_path) or self._is_media_segment(resource_path))
+            and track_id is not None
+            and user_id is not None
+        )
+
         # Try to get from cache
         cached_entry = self._cache.get(cache_key_url)
         if cached_entry:
@@ -100,6 +183,11 @@ class CDNService:
                 logger.info(f"Cache HIT: {resource_path}")
             metadata = cached_entry.as_metadata()
             ttl_remaining = max(0, int(metadata["ttl_remaining"]))
+
+            # Publish listening event for media segments
+            if should_publish_event:
+                await self._publish_listening_event(track_id, user_id, resource_path)
+
             return Response(
                 content=cached_entry.content,
                 media_type=cached_entry.content_type,
@@ -149,6 +237,13 @@ class CDNService:
                 resource_category = self._get_resource_category(resource_path)
                 ttl_int = int(ttl)
                 resource_descriptor = origin_path
+
+                # Publish listening event for media segments
+                if should_publish_event:
+                    await self._publish_listening_event(
+                        track_id, user_id, resource_path
+                    )
+
                 return Response(
                     content=content,
                     media_type=content_type,
@@ -177,7 +272,9 @@ class CDNService:
         """List metadata for cached entries."""
         return self._cache.list_entries()
 
-    def get_cache_entry(self, cache_id: str, include_content: bool = False) -> dict[str, Any] | None:
+    def get_cache_entry(
+        self, cache_id: str, include_content: bool = False
+    ) -> dict[str, Any] | None:
         """Return metadata (and optional preview) for a specific cache entry."""
         entry = self._cache.get_entry(cache_id)
         if entry is None:
@@ -188,9 +285,9 @@ class CDNService:
             preview_length = min(512, len(entry.content))
             metadata.update(
                 {
-                    "content_preview_base64": base64.b64encode(entry.content[:preview_length]).decode(
-                        "utf-8"
-                    ),
+                    "content_preview_base64": base64.b64encode(
+                        entry.content[:preview_length]
+                    ).decode("utf-8"),
                     "content_preview_bytes": preview_length,
                     "content_total_bytes": len(entry.content),
                 }
@@ -217,7 +314,9 @@ class CDNService:
 
         for stats in by_type.values():
             if stats["count"] > 0:
-                stats["avg_ttl_remaining"] = round(stats["avg_ttl_remaining"] / stats["count"], 2)
+                stats["avg_ttl_remaining"] = round(
+                    stats["avg_ttl_remaining"] / stats["count"], 2
+                )
 
         return {
             "total_entries": len(entries),
@@ -226,11 +325,12 @@ class CDNService:
             "by_type": by_type,
         }
 
-    async def fetch_stream_metadata(self, track_id: str, query_params: dict[str, Any]) -> Response:
+    async def fetch_stream_metadata(
+        self, track_id: str, query_params: dict[str, Any]
+    ) -> Response:
         url = f"{self._settings.origin_api_base_url.rstrip('/')}/api/stream/{track_id}"
         return await self._forward_api_request("GET", url, params=query_params)
 
     async def refresh_stream_metadata(self, payload: dict[str, Any]) -> Response:
         url = f"{self._settings.origin_api_base_url.rstrip('/')}/api/stream/refresh"
         return await self._forward_api_request("POST", url, json=payload)
-

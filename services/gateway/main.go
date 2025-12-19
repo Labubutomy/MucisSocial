@@ -18,6 +18,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,9 +30,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	artistpb "github.com/MusicSocial/api-gateway/proto/artists/v1"
 	playlistpb "github.com/MusicSocial/api-gateway/proto/playlist/v1"
+	queuepb "github.com/MusicSocial/api-gateway/proto/queue/v1"
+	sessionpb "github.com/MusicSocial/api-gateway/proto/session/v1"
 	trackspb "github.com/MusicSocial/api-gateway/proto/tracks/v1"
 	uploadpb "github.com/MusicSocial/api-gateway/proto/upload"
 	pb "github.com/MusicSocial/api-gateway/proto/users/v1"
@@ -47,12 +51,17 @@ import (
 )
 
 type Gateway struct {
-	userClient     pb.UserServiceClient
-	artistClient   artistpb.ArtistServiceClient
-	tracksClient   trackspb.TracksServiceClient
-	playlistClient playlistpb.PlaylistServiceClient
-	uploadClient   uploadpb.UploadServiceClient
-	jwtSecret      []byte
+	userClient         pb.UserServiceClient
+	artistClient       artistpb.ArtistServiceClient
+	tracksClient       trackspb.TracksServiceClient
+	playlistClient     playlistpb.PlaylistServiceClient
+	uploadClient       uploadpb.UploadServiceClient
+	sessionClient      sessionpb.SessionServiceClient
+	queueClient        queuepb.PlaybackQueueServiceClient
+	recommendationsURL string
+	messagingURL       string
+	friendsURL         string
+	jwtSecret          []byte
 }
 
 type ErrorResponse struct {
@@ -97,13 +106,32 @@ func main() {
 	}
 	defer uploadConn.Close()
 
+	// Connect to session gRPC service
+	sessionConn, err := grpc.Dial("session-service:50060", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to session gRPC service: %v", err)
+	}
+	defer sessionConn.Close()
+
+	// Connect to playback queue gRPC service
+	queueConn, err := grpc.Dial("playback-queue-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Failed to connect to playback queue gRPC service: %v", err)
+	}
+	defer queueConn.Close()
+
 	gateway := &Gateway{
-		userClient:     pb.NewUserServiceClient(userConn),
-		artistClient:   artistpb.NewArtistServiceClient(artistConn),
-		tracksClient:   trackspb.NewTracksServiceClient(tracksConn),
-		playlistClient: playlistpb.NewPlaylistServiceClient(playlistConn),
-		uploadClient:   uploadpb.NewUploadServiceClient(uploadConn),
-		jwtSecret:      []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
+		userClient:         pb.NewUserServiceClient(userConn),
+		artistClient:       artistpb.NewArtistServiceClient(artistConn),
+		tracksClient:       trackspb.NewTracksServiceClient(tracksConn),
+		playlistClient:     playlistpb.NewPlaylistServiceClient(playlistConn),
+		uploadClient:       uploadpb.NewUploadServiceClient(uploadConn),
+		sessionClient:      sessionpb.NewSessionServiceClient(sessionConn),
+		queueClient:        queuepb.NewPlaybackQueueServiceClient(queueConn),
+		recommendationsURL: getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080"),
+		messagingURL:       getEnv("MESSAGING_SERVICE_URL", "http://messaging-service:8080"),
+		friendsURL:         getEnv("FRIENDS_SERVICE_URL", "http://friends-service:8080"),
+		jwtSecret:          []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
 	r := mux.NewRouter()
@@ -128,21 +156,61 @@ func main() {
 	r.HandleFunc("/api/v1/artists/{artistId}", gateway.getArtistByIdHandler).Methods("GET", "OPTIONS")
 
 	// Public tracks endpoints (no JWT required)
-	r.HandleFunc("/api/v1/tracks", gateway.getTracksHandler).Methods("GET", "OPTIONS")
+	// IMPORTANT: More specific routes must be registered before generic ones
+	r.HandleFunc("/api/v1/tracks/new", gateway.getNewReleasesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/tracks/search/trending", gateway.getTrendingQueriesHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/search", gateway.searchTracksHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/tracks", gateway.getTracksHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/tracks/{trackId}", gateway.getTrackByIdHandler).Methods("GET", "OPTIONS")
 
 	// Upload endpoint (no JWT required)
 	r.HandleFunc("/api/v1/upload/track", gateway.uploadTrackHandler).Methods("POST", "OPTIONS")
 
-	// Protected endpoints (JWT required)
+	// Session endpoints (proxy to session service)
+	// Health check (no auth required)
+	r.HandleFunc("/api/rooms/health", gateway.sessionHealthHandler).Methods("GET", "OPTIONS")
+	
+	// Session endpoints with JWT protection - /api/rooms path
+	sessionRouter := r.PathPrefix("/api/rooms").Subrouter()
+	sessionRouter.Use(gateway.jwtMiddleware)
+	sessionRouter.HandleFunc("/{roomId}", gateway.getRoomHandler).Methods("GET", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}", gateway.createRoomHandler).Methods("POST", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
+	sessionRouter.HandleFunc("/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
+	
 	protected := r.PathPrefix("/api/v1").Subrouter()
 	protected.Use(gateway.jwtMiddleware)
+	
+	// Session endpoints (JWT required) - also available under /api/v1/rooms
+	protected.HandleFunc("/rooms/{roomId}", gateway.getRoomHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}", gateway.createRoomHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/rooms/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
+	
+	// Session queue endpoints (JWT required) - use playback_queue service
+	protected.HandleFunc("/sessions/{roomId}/queue/current", gateway.getSessionCurrentTrackHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue", gateway.getSessionQueueHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/tracks", gateway.addTrackToSessionQueueHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/tracks/{trackId}", gateway.removeTrackFromSessionQueueHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/next", gateway.getSessionNextTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue/prev", gateway.getSessionPrevTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/sessions/{roomId}/queue", gateway.clearSessionQueueHandler).Methods("DELETE", "OPTIONS")
 	protected.HandleFunc("/me", gateway.getMeHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me", gateway.updateMeHandler).Methods("PUT", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.getSearchHistoryHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.addSearchHistoryHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/me/search-history", gateway.clearSearchHistoryHandler).Methods("DELETE", "OPTIONS")
+
+	// Queue endpoints
+	protected.HandleFunc("/me/queue/current", gateway.getUserCurrentTrackHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/me/queue", gateway.getUserQueueHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/me/queue/tracks", gateway.addTrackToUserQueueHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue/tracks/{trackId}", gateway.removeTrackFromUserQueueHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/me/queue/next", gateway.getUserNextTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue/prev", gateway.getUserPrevTrackHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/me/queue", gateway.clearUserQueueHandler).Methods("DELETE", "OPTIONS")
 
 	// Artists endpoints
 	protected.HandleFunc("/artists", gateway.createArtistHandler).Methods("POST", "OPTIONS")
@@ -150,6 +218,27 @@ func main() {
 	// Tracks endpoints
 	protected.HandleFunc("/tracks", gateway.createTrackHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/tracks/{trackId}", gateway.updateTrackInfoHandler).Methods("PUT", "OPTIONS")
+
+	// Recommendations endpoint
+	protected.HandleFunc("/recommendations", gateway.getRecommendationsHandler).Methods("GET", "OPTIONS")
+	
+	// Messaging endpoints (proxy to messaging-service)
+	protected.PathPrefix("/messaging/").HandlerFunc(gateway.messagingProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+
+	// Friends endpoints (proxy to friends-service)
+	// Обрабатываем как /friends, так и /friends/*
+	protected.PathPrefix("/friends").HandlerFunc(gateway.friendsProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+	
+	// User search endpoint
+	protected.HandleFunc("/users/search", gateway.searchUsersHandler).Methods("GET", "OPTIONS")
+	// Get user by ID endpoint (protected)
+	protected.HandleFunc("/users/{userId}", gateway.getUserByIdHandler).Methods("GET", "OPTIONS")
+	
+	// Charts endpoint (public, no JWT required)
+	r.HandleFunc("/api/v1/charts/top", gateway.getChartsHandler).Methods("GET", "OPTIONS")
+	
+	// User taste statistics endpoint (public, no JWT required)
+	r.HandleFunc("/api/v1/users/{userId}/taste", gateway.getUserTasteHandler).Methods("GET", "OPTIONS")
 
 	// Playlist endpoints
 	protected.HandleFunc("/playlists", gateway.createPlaylistHandler).Methods("POST", "OPTIONS")
@@ -161,6 +250,23 @@ func main() {
 	protected.HandleFunc("/playlists/{playlistId}/tracks", gateway.addTrackToPlaylistHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/playlists/{playlistId}/tracks/{trackId}", gateway.removeTrackFromPlaylistHandler).Methods("DELETE", "OPTIONS")
 
+	// Routes endpoints (proxy to routes-service)
+	// Public routes
+	r.HandleFunc("/api/v1/routes/nearby", gateway.findNearbyRoutesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes/search", gateway.searchRoutesHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes/{routeId}", gateway.getRouteHandler).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/v1/routes", gateway.listRoutesHandler).Methods("GET", "OPTIONS")
+	
+	// Protected routes (JWT required)
+	protected.HandleFunc("/routes", gateway.createRouteHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}", gateway.updateRouteHandler).Methods("PUT", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}", gateway.deleteRouteHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points", gateway.getRoutePointsHandler).Methods("GET", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points", gateway.addRoutePointHandler).Methods("POST", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/{pointId}", gateway.updateRoutePointHandler).Methods("PUT", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/{pointId}", gateway.deleteRoutePointHandler).Methods("DELETE", "OPTIONS")
+	protected.HandleFunc("/routes/{routeId}/points/reorder", gateway.reorderRoutePointsHandler).Methods("POST", "OPTIONS")
+
 	port := getEnv("PORT", "8080")
 	log.Printf("API Gateway starting on port %s", port)
 	log.Printf("Swagger documentation available at: http://localhost:%s/swagger/", port)
@@ -169,12 +275,23 @@ func main() {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		origin := r.Header.Get("Origin")
+		// If no origin, allow all (for same-origin requests)
+		if origin == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Credentials", "false")
+		} else {
+			// For cross-origin requests, use specific origin with credentials
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Max-Age", "3600")
 
 		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
@@ -182,8 +299,147 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// messagingProxyHandler proxies all /api/v1/messaging/* requests to messaging-service
+func (g *Gateway) messagingProxyHandler(w http.ResponseWriter, r *http.Request) {
+	target, err := url.Parse(g.messagingURL)
+	if err != nil {
+		log.Printf("Failed to parse messaging service URL: %v", err)
+		writeError(w, "Messaging service unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Обрезаем префикс /api/v1/messaging и добавляем /api/v1 обратно
+	originalPath := r.URL.Path
+	prefix := "/api/v1/messaging"
+	if strings.HasPrefix(originalPath, prefix) {
+		trimmed := strings.TrimPrefix(originalPath, prefix)
+		if trimmed == "" {
+			r.URL.Path = "/api/v1"
+		} else {
+			r.URL.Path = "/api/v1" + trimmed
+		}
+	}
+
+	// Обновляем Host и Scheme для правильного проксирования
+	r.URL.Host = target.Host
+	r.URL.Scheme = target.Scheme
+	r.Host = target.Host
+	
+	// Сохраняем CORS заголовки из middleware перед проксированием
+	corsHeaders := make(map[string]string)
+	for key, values := range w.Header() {
+		if strings.HasPrefix(key, "Access-Control-") {
+			if len(values) > 0 {
+				corsHeaders[key] = values[0]
+			}
+		}
+	}
+	
+	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
+	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
+	for key := range corsHeaders {
+		w.Header().Del(key)
+	}
+	
+	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Удаляем CORS заголовки из ответа сервиса, если они есть
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		
+		// Устанавливаем CORS заголовки из middleware только один раз
+		for key, value := range corsHeaders {
+			resp.Header.Set(key, value)
+		}
+		return nil
+	}
+	
+	proxy.ServeHTTP(w, r)
+}
+
+// friendsProxyHandler proxies all /api/v1/friends/* requests to friends-service
+func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
+	target, err := url.Parse(g.friendsURL)
+	if err != nil {
+		log.Printf("Failed to parse friends service URL: %v", err)
+		writeError(w, "Friends service unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Обрезаем префикс /api/v1/friends
+	originalPath := r.URL.Path
+	prefix := "/api/v1/friends"
+	log.Printf("[Friends Proxy] Original path: %s", originalPath)
+	if strings.HasPrefix(originalPath, prefix) {
+		trimmed := strings.TrimPrefix(originalPath, prefix)
+		if trimmed == "" {
+			r.URL.Path = "/"
+		} else if !strings.HasPrefix(trimmed, "/") {
+			// Если после обрезки нет слеша, добавляем его
+			r.URL.Path = "/" + trimmed
+		} else {
+			r.URL.Path = trimmed
+		}
+		log.Printf("[Friends Proxy] Proxying to: %s%s", target.String(), r.URL.Path)
+	} else {
+		log.Printf("[Friends Proxy] WARNING: Path %s does not start with prefix %s", originalPath, prefix)
+	}
+
+	// Обновляем Host и Scheme для правильного проксирования
+	r.URL.Host = target.Host
+	r.URL.Scheme = target.Scheme
+	r.Host = target.Host
+	
+	// Сохраняем CORS заголовки из middleware перед проксированием
+	corsHeaders := make(map[string]string)
+	for key, values := range w.Header() {
+		if strings.HasPrefix(key, "Access-Control-") {
+			if len(values) > 0 {
+				corsHeaders[key] = values[0]
+			}
+		}
+	}
+	
+	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
+	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
+	for key := range corsHeaders {
+		w.Header().Del(key)
+	}
+	
+	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Удаляем CORS заголовки из ответа сервиса, если они есть
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		
+		// Устанавливаем CORS заголовки из middleware только один раз
+		for key, value := range corsHeaders {
+			resp.Header.Set(key, value)
+		}
+		return nil
+	}
+	
+	proxy.ServeHTTP(w, r)
+}
+
 func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// OPTIONS запросы (preflight) должны проходить без проверки JWT
+		if r.Method == "OPTIONS" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			writeError(w, "Missing Authorization header", http.StatusUnauthorized)
@@ -442,6 +698,72 @@ func (g *Gateway) updateMeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// searchUsersHandler godoc
+//
+//	@Summary		Поиск пользователей
+//	@Description	Поиск пользователей по username
+//	@Tags			User Profile
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			q		query		string	true	"Поисковый запрос (username)"
+//	@Param			limit	query		int		false	"Количество результатов"	default(10)
+//	@Success		200		{object}	object{users=[]object}
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+// getUserByIdHandler handles getting user by ID
+func (g *Gateway) getUserByIdHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+
+	grpcReq := &pb.GetUserByIdRequest{
+		UserId: userID,
+	}
+
+	resp, err := g.userClient.GetUserById(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user": resp.User,
+	})
+}
+
+//	@Router			/api/v1/users/search [get]
+func (g *Gateway) searchUsersHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		writeError(w, "Search query is required", http.StatusBadRequest)
+		return
+	}
+
+	limit := int32(10)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 32); err == nil && parsed > 0 && parsed <= 50 {
+			limit = int32(parsed)
+		}
+	}
+
+	grpcReq := &pb.SearchUsersRequest{
+		Query: query,
+		Limit: limit,
+	}
+
+	resp, err := g.userClient.SearchUsers(context.Background(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"users": resp.Users,
+	})
+}
+
 // getSearchHistoryHandler godoc
 //
 //	@Summary		Получение истории поиска
@@ -521,6 +843,17 @@ func (g *Gateway) addSearchHistoryHandler(w http.ResponseWriter, r *http.Request
 		handleGrpcError(w, err)
 		return
 	}
+
+	// Отправляем событие поиска в recommendations-service (non-blocking)
+	go func() {
+		recommendationsURL := getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080")
+		client := &http.Client{Timeout: 2 * time.Second}
+		reqBody := map[string]string{"query": req.Query}
+		jsonBody, _ := json.Marshal(reqBody)
+		req, _ := http.NewRequest("POST", recommendationsURL+"/search/query", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		client.Do(req) // Ignore errors - best effort
+	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -863,6 +1196,149 @@ func (g *Gateway) updateTrackInfoHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// ===== RECOMMENDATIONS HANDLERS =====
+
+// @Summary Получить рекомендации
+// @Description Получение персональных рекомендаций треков для пользователя
+// @Tags recommendations
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Количество рекомендаций (по умолчанию 20, максимум 100)"
+// @Param exclude_explicit query boolean false "Исключить explicit треки"
+// @Success 200 {object} map[string][]string "Список рекомендованных треков"
+// @Failure 401 {object} ErrorResponse "Пользователь не авторизован"
+// @Failure 500 {object} ErrorResponse "Внутренняя ошибка сервера"
+// @Router /api/v1/recommendations [get]
+func (g *Gateway) getRecommendationsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id").(string)
+
+	// Парсинг параметров запроса
+	limit := 20
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	// Формирование запроса к сервису рекомендаций
+	reqBody := map[string]interface{}{
+		"user_id": userID,
+		"limit":   limit,
+	}
+
+	// Добавление фильтров если они указаны
+	if excludeExplicit := r.URL.Query().Get("exclude_explicit"); excludeExplicit == "true" {
+		reqBody["filters"] = map[string]interface{}{
+			"exclude_explicit": true,
+		}
+	}
+
+	// Отправка запроса к сервису рекомендаций
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		http.Error(w, "Failed to encode request", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := http.Post(
+		g.recommendationsURL+"/recommendations",
+		"application/json",
+		strings.NewReader(string(jsonData)),
+	)
+	if err != nil {
+		log.Printf("Failed to get recommendations: %v", err)
+		http.Error(w, "Failed to get recommendations", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Проксирование ответа
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
+// getChartsHandler proxies request to recommendations service for top charts
+func (g *Gateway) getChartsHandler(w http.ResponseWriter, r *http.Request) {
+	// Build URL with query parameters
+	targetURL := g.recommendationsURL + "/charts/top"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get charts: %v", err)
+		http.Error(w, "Failed to get charts", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
+// getNewReleasesHandler proxies request to recommendations service for new releases
+func (g *Gateway) getNewReleasesHandler(w http.ResponseWriter, r *http.Request) {
+	// Build URL with query parameters
+	targetURL := g.recommendationsURL + "/tracks/new"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get new releases: %v", err)
+		http.Error(w, "Failed to get new releases", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
+}
+
+// getUserTasteHandler proxies request to recommendations service for user taste statistics
+func (g *Gateway) getUserTasteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+	
+	// Build URL
+	targetURL := g.recommendationsURL + "/users/" + userID + "/taste"
+	if r.URL.RawQuery != "" {
+		targetURL += "?" + r.URL.RawQuery
+	}
+	
+	resp, err := http.Get(targetURL)
+	if err != nil {
+		log.Printf("Failed to get user taste: %v", err)
+		http.Error(w, "Failed to get user taste", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	
+	// Proxy response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response: %v", err)
+	}
 }
 
 // ===== PLAYLIST HANDLERS =====
@@ -1426,6 +1902,40 @@ func (g *Gateway) searchTracksHandler(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
+// getTrendingQueriesHandler godoc
+//
+//	@Summary		Получить популярные поисковые запросы
+//	@Description	Возвращает список самых популярных поисковых запросов за последний месяц
+//	@Tags			Tracks
+//	@Accept			json
+//	@Produce		json
+//	@Param			limit	query		int		false	"Количество запросов для возврата"	default(10)
+//	@Param			days	query		int		false	"Количество дней для анализа"		default(30)
+//	@Success		200		{object}	object{items=[]object{query=string,count=int}}
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/api/v1/tracks/search/trending [get]
+func (g *Gateway) getTrendingQueriesHandler(w http.ResponseWriter, r *http.Request) {
+	// Проксируем запрос к recommendations-service
+	recommendationsURL := getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080")
+	targetURL, err := url.Parse(recommendationsURL)
+	if err != nil {
+		writeError(w, "Invalid recommendations service URL", http.StatusInternalServerError)
+		return
+	}
+
+	// Создаем прокси
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Модифицируем запрос для проксирования
+	r.URL.Path = "/search/trending"
+	r.URL.Host = targetURL.Host
+	r.URL.Scheme = targetURL.Scheme
+	r.Host = targetURL.Host
+
+	// Проксируем запрос
+	proxy.ServeHTTP(w, r)
+}
+
 // getTrackByIdHandler godoc
 //
 //	@Summary		Получить трек по ID
@@ -1461,4 +1971,342 @@ func (g *Gateway) getTrackByIdHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проксируем запрос
 	proxy.ServeHTTP(w, r)
+}
+
+// Routes handlers - proxy to routes-service
+
+func (g *Gateway) proxyRoutesHandler(w http.ResponseWriter, r *http.Request, path string) {
+	routesServiceURL := getEnv("ROUTES_SERVICE_URL", "http://routes-service:8000")
+	targetURL, err := url.Parse(routesServiceURL)
+	if err != nil {
+		writeError(w, "Invalid routes service URL", http.StatusInternalServerError)
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	
+	// Preserve original path for proper routing
+	originalPath := r.URL.Path
+	r.URL.Path = path
+	r.URL.Host = targetURL.Host
+	r.URL.Scheme = targetURL.Scheme
+	r.Host = targetURL.Host
+	
+	// CORS headers are already set by corsMiddleware, don't duplicate
+	proxy.ServeHTTP(w, r)
+	
+	// Restore original path
+	r.URL.Path = originalPath
+}
+
+func (g *Gateway) findNearbyRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/nearby")
+}
+
+func (g *Gateway) searchRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/search")
+}
+
+func (g *Gateway) getRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) listRoutesHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes")
+}
+
+func (g *Gateway) createRouteHandler(w http.ResponseWriter, r *http.Request) {
+	g.proxyRoutesHandler(w, r, "/api/v1/routes")
+}
+
+func (g *Gateway) updateRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) deleteRouteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId)
+}
+
+func (g *Gateway) getRoutePointsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points")
+}
+
+func (g *Gateway) addRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points")
+}
+
+func (g *Gateway) updateRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	pointId := vars["pointId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/"+pointId)
+}
+
+func (g *Gateway) deleteRoutePointHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	pointId := vars["pointId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/"+pointId)
+}
+
+func (g *Gateway) reorderRoutePointsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	routeId := vars["routeId"]
+	g.proxyRoutesHandler(w, r, "/api/v1/routes/"+routeId+"/points/reorder")
+}
+
+// Queue Handlers
+
+// getUserCurrentTrackHandler returns the current track in user's queue
+func (g *Gateway) getUserCurrentTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetCurrentTrack(ctx, &queuepb.GetCurrentTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// Queue is empty - this is normal
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"current": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current": resp.Current,
+	})
+}
+
+// getUserQueueHandler returns the list of tracks in user's queue
+func (g *Gateway) getUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	limit := int32(50)
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.ParseInt(l, 10, 32); err == nil {
+			limit = int32(parsed)
+		}
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.ListQueue(ctx, &queuepb.ListQueueRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		Limit: limit,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	// Ensure items is always an array, not nil
+	items := resp.Items
+	if items == nil {
+		items = []*queuepb.QueueItem{}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items": items,
+	})
+}
+
+// addTrackToUserQueueHandler adds a track to user's queue
+func (g *Gateway) addTrackToUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		TrackID string `json:"track_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.TrackID == "" {
+		writeError(w, "track_id is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	_, err := g.queueClient.EnqueueTrack(ctx, &queuepb.EnqueueTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		TrackId: req.TrackID,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// removeTrackFromUserQueueHandler removes a track from user's queue
+func (g *Gateway) removeTrackFromUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	trackID := vars["trackId"]
+	if trackID == "" {
+		writeError(w, "trackId is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.RemoveTrack(ctx, &queuepb.RemoveTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+		TrackId: trackID,
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": resp.Success,
+	})
+}
+
+// getUserNextTrackHandler gets the next track and moves cursor forward
+func (g *Gateway) getUserNextTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetNextTrack(ctx, &queuepb.GetNextTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// Queue is empty
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"next": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"next": resp.Next,
+	})
+}
+
+// getUserPrevTrackHandler gets the previous track and moves cursor backward
+func (g *Gateway) getUserPrevTrackHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	resp, err := g.queueClient.GetPrevTrack(ctx, &queuepb.GetPrevTrackRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			// No previous track
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"previous": nil,
+			})
+			return
+		}
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"previous": resp.Previous,
+	})
+}
+
+// clearUserQueueHandler clears user's queue
+func (g *Gateway) clearUserQueueHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		writeError(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	_, err := g.queueClient.ClearQueue(ctx, &queuepb.ClearQueueRequest{
+		Context: &queuepb.ContextRef{
+			ContextType: "user",
+			ContextId:   userID,
+		},
+	})
+
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
