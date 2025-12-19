@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package groups.v1;
+
+option go_package = "github.com/Labubutomy/MucisSocial/services/groups/api;groupspb";
+
+service GroupsService {
+  rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+  rpc JoinGroup(JoinGroupRequest) returns (JoinGroupResponse);
+  rpc LeaveGroup(LeaveGroupRequest) returns (LeaveGroupResponse);
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
+  rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+  rpc SubmitSuggestion(SubmitSuggestionRequest) returns (SubmitSuggestionResponse);
+  rpc ListSuggestions(ListSuggestionsRequest) returns (ListSuggestionsResponse);
+  rpc AcceptSuggestion(AcceptSuggestionRequest) returns (AcceptSuggestionResponse);
+  rpc RejectSuggestion(RejectSuggestionRequest) returns (RejectSuggestionResponse);
+  rpc ListQueue(ListQueueRequest) returns (ListQueueResponse);
+}
+
+message Group {
+  string id = 1;
+  string owner_id = 2;
+  string name = 3;
+  string invite_code = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string queue_id = 7;
+  string queue_context_type = 8;
+}
+
+message TrackSuggestion {
+  string id = 1;
+  string group_id = 2;
+  string track_id = 3;
+  string suggested_by = 4;
+  string status = 5;
+  string created_at = 6;
+  string updated_at = 7;
+  string handled_by = 8;
+  string handled_at = 9;
+  string rejection_reason = 10;
+}
+
+message QueueEntry {
+  string id = 1;
+  string group_id = 2;
+  string suggestion_id = 3;
+  string track_id = 4;
+  string added_by = 5;
+  int32 position = 6;
+  string added_at = 7;
+}
+
+message CreateGroupRequest {
+  string owner_id = 1;
+  string name = 2;
+}
+
+message CreateGroupResponse {
+  Group group = 1;
+  string invite_link = 2;
+}
+
+message JoinGroupRequest {
+  string user_id = 1;
+  string invite_code = 2;
+}
+
+message JoinGroupResponse {
+  Group group = 1;
+  string invite_link = 2;
+}
+
+message LeaveGroupRequest {
+  string group_id = 1;
+  string user_id = 2;
+}
+
+message LeaveGroupResponse {
+  bool success = 1;
+}
+
+message DeleteGroupRequest {
+  string group_id = 1;
+  string owner_id = 2;
+}
+
+message DeleteGroupResponse {
+  bool success = 1;
+}
+
+message GetGroupRequest {
+  string group_id = 1;
+}
+
+message GetGroupResponse {
+  Group group = 1;
+  string invite_link = 2;
+}
+
+message SubmitSuggestionRequest {
+  string group_id = 1;
+  string user_id = 2;
+  string track_id = 3;
+}
+
+message SubmitSuggestionResponse {
+  TrackSuggestion suggestion = 1;
+}
+
+message ListSuggestionsRequest {
+  string group_id = 1;
+  string owner_id = 2;
+  string status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListSuggestionsResponse {
+  repeated TrackSuggestion suggestions = 1;
+}
+
+message AcceptSuggestionRequest {
+  string group_id = 1;
+  string owner_id = 2;
+  string suggestion_id = 3;
+}
+
+message AcceptSuggestionResponse {
+  QueueEntry entry = 1;
+}
+
+message RejectSuggestionRequest {
+  string group_id = 1;
+  string owner_id = 2;
+  string suggestion_id = 3;
+  string reason = 4;
+}
+
+message RejectSuggestionResponse {
+  bool success = 1;
+}
+
+message ListQueueRequest {
+  string group_id = 1;
+  int32 limit = 2;
+}
+
+message ListQueueResponse {
+  repeated QueueEntry queue = 1;
+}
