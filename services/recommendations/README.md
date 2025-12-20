@@ -111,9 +111,13 @@ Response:
   "user_id": "user123",
   "track_id": "track456",
   "listened_seconds": 180,
-  "ts": 1734134400
+  "ts": 1734134400,
+  "lat": 59.9311,
+  "lon": 30.3609
 }
 ```
+
+**Note**: `lat` and `lon` fields are optional. When provided and `ENABLE_GEO_TOP=true`, the service will aggregate listening statistics by geographic location using geohash.
 
 ## Testing without Kafka
 
@@ -150,6 +154,55 @@ curl -X POST http://localhost:8080/recommendations \
     "user_id": "user1",
     "limit": 10
   }'
+
+# Get top tracks nearby a location (requires ENABLE_GEO_TOP=true)
+curl "http://localhost:8080/charts/top/nearby?lat=59.9311&lon=30.3609&radius_m=2000&limit=20"
+```
+
+## Geo-based Top Charts API
+
+When `ENABLE_GEO_TOP=true`, the service provides geographic-based track popularity:
+
+### GET /charts/top/nearby
+
+Query parameters:
+- `lat` (required): Latitude (-90 to 90)
+- `lon` (required): Longitude (-180 to 180)
+- `radius_m` (optional): Search radius in meters (default: 1000)
+- `limit` (optional): Max results to return (default: 20)
+
+Example response:
+```json
+{
+  "meta": {
+    "precision": 6,
+    "radius_m": 2000,
+    "geohashes_queried": 9,
+    "center_lat": 59.9311,
+    "center_lon": 30.3609
+  },
+  "track_ids": ["track1", "track2", "track3"],
+  "tracks": [
+    {"track_id": "track1", "count": 123},
+    {"track_id": "track2", "count": 100},
+    {"track_id": "track3", "count": 87}
+  ]
+}
+```
+
+Example with coordinates in listening event:
+```bash
+curl -X POST http://localhost:8080/ingest/listening \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "track_listened",
+    "user_id": "user1",
+    "track_id": "track1",
+    "listened_seconds": 180,
+    "ts": 1734134400,
+    "lat": 59.9311,
+    "lon": 30.3609
+  }'
 ```
 
 ## Environment Variables
@@ -160,6 +213,11 @@ curl -X POST http://localhost:8080/recommendations \
 | KAFKA_BROKERS | redpanda:9092 | Kafka/Redpanda brokers |
 | TRACK_EVENTS_TOPIC | track-events | Topic for track events |
 | LISTENING_EVENTS_TOPIC | listening-events | Topic for listening events |
+| ENABLE_GEO_TOP | false | Enable geo-based top charts feature |
+| GEOHASH_PRECISION | 6 | Geohash precision (1-10, ~1.2km at precision 6) |
+| GEO_TOP_CACHE_TTL | 60s | Cache TTL for geo query results |
+| GEO_TOP_MAX_PER_GEO | 1000 | Max tracks stored per geohash cell |
+| GEO_TOP_DEFAULT_RADIUS_M | 1000 | Default search radius in meters |
 
 ## Running
 

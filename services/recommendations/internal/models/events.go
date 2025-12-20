@@ -12,9 +12,11 @@ type TrackEvent struct {
 
 // ListeningEvent represents a user listening to a track
 type ListeningEvent struct {
-	EventType       string `json:"event_type"`
-	UserID          string `json:"user_id"`
-	TrackID         string `json:"track_id"`
-	ListenedSeconds int    `json:"listened_seconds"`
-	Timestamp       int64  `json:"ts"`
+	EventType       string   `json:"event_type"`
+	UserID          string   `json:"user_id"`
+	TrackID         string   `json:"track_id"`
+	ListenedSeconds int      `json:"listened_seconds"`
+	Timestamp       int64    `json:"ts"`
+	Lat             *float64 `json:"lat,omitempty"` // Optional latitude
+	Lon             *float64 `json:"lon,omitempty"` // Optional longitude
 }

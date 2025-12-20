@@ -417,6 +417,11 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET_NAME=recommendations
       - BACKUP_INTERVAL=5m
+      - ENABLE_GEO_TOP=true
+      - GEOHASH_PRECISION=6
+      - GEO_TOP_CACHE_TTL=60s
+      - GEO_TOP_MAX_PER_GEO=1000
+      - GEO_TOP_DEFAULT_RADIUS_M=2000
     ports:
       - "8090:8080"
     networks:
