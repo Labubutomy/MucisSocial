@@ -34,19 +34,19 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
 	user := &domain.User{}
 	query := `
-		SELECT u.id, u.username, u.email, u.password_hash, u.avatar_url, u.created_at, u.updated_at,
+		SELECT u.id, u.username, u.email, u.password_hash, u.avatar_url, u.coins, u.created_at, u.updated_at,
 		       COALESCE(array_agg(DISTINCT mtg.genre) FILTER (WHERE mtg.genre IS NOT NULL), '{}') as top_genres,
 		       COALESCE(array_agg(DISTINCT mta.artist) FILTER (WHERE mta.artist IS NOT NULL), '{}') as top_artists
 		FROM users u
 		LEFT JOIN music_taste_genres mtg ON u.id = mtg.user_id
 		LEFT JOIN music_taste_artists mta ON u.id = mta.user_id
 		WHERE u.id = $1
-		GROUP BY u.id, u.username, u.email, u.password_hash, u.avatar_url, u.created_at, u.updated_at`
+		GROUP BY u.id, u.username, u.email, u.password_hash, u.avatar_url, u.coins, u.created_at, u.updated_at`
 
 	var topGenres, topArtists pq.StringArray
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
-		&user.AvatarURL, &user.CreatedAt, &user.UpdatedAt,
+		&user.AvatarURL, &user.Coins, &user.CreatedAt, &user.UpdatedAt,
 		&topGenres, &topArtists)
 
 	if err != nil {
@@ -259,4 +259,29 @@ func (r *userRepository) SearchByUsername(ctx context.Context, query string, lim
 	}
 
 	return users, rows.Err()
+}
+
+// UpdateCoins updates user's coin balance by adding the delta value
+func (r *userRepository) UpdateCoins(ctx context.Context, userID string, coinsDelta int) error {
+	query := `
+		UPDATE users 
+		SET coins = coins + $2, updated_at = $3
+		WHERE id = $1
+		RETURNING coins`
+
+	var newCoins int
+	err := r.db.QueryRowContext(ctx, query, userID, coinsDelta, time.Now()).Scan(&newCoins)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("user not found")
+		}
+		return err
+	}
+
+	// Check if coins went negative
+	if newCoins < 0 {
+		return errors.New("insufficient coins")
+	}
+
+	return nil
 }

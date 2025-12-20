@@ -83,6 +83,13 @@ func (s *userService) SearchUsers(ctx context.Context, query string, limit int) 
 	return publicUsers, nil
 }
 
+func (s *userService) UpdateCoins(ctx context.Context, userID string, coinsDelta int) error {
+	if err := s.userRepo.UpdateCoins(ctx, userID, coinsDelta); err != nil {
+		return fmt.Errorf("failed to update coins: %w", err)
+	}
+	return nil
+}
+
 type searchHistoryService struct {
 	searchHistoryRepo domain.SearchHistoryRepository
 }
