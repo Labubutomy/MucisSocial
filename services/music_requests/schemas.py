@@ -8,11 +8,13 @@ from pydantic import BaseModel, Field
 
 class RequestSessionCreate(BaseModel):
     """Create a new request session"""
+
     pass
 
 
 class RequestSessionOut(BaseModel):
     """Request session output"""
+
     id: UUID
     artist_id: UUID
     session_code: str
@@ -26,6 +28,7 @@ class RequestSessionOut(BaseModel):
 
 class TrackRequestCreate(BaseModel):
     """Create a new track request"""
+
     session_code: str
     track_id: UUID
     message: str | None = Field(None, max_length=500)
@@ -33,6 +36,7 @@ class TrackRequestCreate(BaseModel):
 
 class TrackRequestOut(BaseModel):
     """Track request output"""
+
     id: UUID
     session_id: UUID
     requester_id: UUID
@@ -48,11 +52,13 @@ class TrackRequestOut(BaseModel):
 
 class TrackRequestAction(BaseModel):
     """Accept or decline a track request"""
+
     action: str = Field(..., pattern="^(accept|decline)$")
 
 
 class CoinTransactionOut(BaseModel):
     """Coin transaction output"""
+
     id: UUID
     from_user_id: UUID
     to_user_id: UUID
@@ -66,5 +72,6 @@ class CoinTransactionOut(BaseModel):
 
 class UserCoinsOut(BaseModel):
     """User coins balance"""
+
     user_id: UUID
     coins: int

@@ -14,6 +14,7 @@ class Base(DeclarativeBase):
 
 class RequestSession(Base):
     """Artist's request session - generates QR code for receiving track requests"""
+
     __tablename__ = "request_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -32,14 +33,13 @@ class RequestSession(Base):
 
 class TrackRequest(Base):
     """Track request from a user to an artist"""
+
     __tablename__ = "track_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), index=True
-    )
+    session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     requester_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     artist_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
     track_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
@@ -57,6 +57,7 @@ class TrackRequest(Base):
 
 class CoinTransaction(Base):
     """Coin transactions between users"""
+
     __tablename__ = "coin_transactions"
 
     id: Mapped[uuid.UUID] = mapped_column(

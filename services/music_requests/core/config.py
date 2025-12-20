@@ -16,7 +16,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = Field(default="Music Requests Service", description="Application name")
+    app_name: str = Field(
+        default="Music Requests Service", description="Application name"
+    )
     app_version: str = Field(default="0.1.0", description="Application version")
 
     host: str = Field(default="0.0.0.0", description="HTTP host")
@@ -32,22 +34,22 @@ class Settings(BaseSettings):
         description="JWT secret key (same as API gateway)",
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
-    
+
     gateway_url: str = Field(
         default="http://api-gateway:8080",
         description="API Gateway URL for interacting with other services",
     )
-    
+
     playback_queue_grpc_url: str = Field(
         default="playback-queue:50056",
         description="Playback Queue gRPC service URL",
     )
-    
+
     coin_cost_per_request: int = Field(
         default=1,
         description="Cost in coins for making a track request",
     )
-    
+
     kafka_brokers: str = Field(
         default="redpanda:9092",
         description="Kafka brokers (comma-separated)",

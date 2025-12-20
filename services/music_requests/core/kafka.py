@@ -31,12 +31,12 @@ def get_kafka_producer() -> KafkaProducer:
 def send_music_request_event(event_type: str, data: dict[str, Any]) -> None:
     """Send music request event to Kafka."""
     producer = get_kafka_producer()
-    
+
     event = {
         "event_type": event_type,
         **data,
     }
-    
+
     try:
         future = producer.send(
             settings.kafka_music_requests_topic,

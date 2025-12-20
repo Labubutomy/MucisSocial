@@ -30,8 +30,8 @@ class Settings(BaseSettings):
             "JWT_SECRET",
             __import__("os").getenv(
                 "WS_GATEWAY_JWT_SECRET",
-                "your-super-secret-access-key-change-in-production"
-            )
+                "your-super-secret-access-key-change-in-production",
+            ),
         ),
         description="JWT secret key for token validation (uses JWT_SECRET or WS_GATEWAY_JWT_SECRET)",
     )
@@ -79,4 +79,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
-

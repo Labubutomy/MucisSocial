@@ -171,7 +171,7 @@ func main() {
 	// Session endpoints (proxy to session service)
 	// Health check (no auth required)
 	r.HandleFunc("/api/rooms/health", gateway.sessionHealthHandler).Methods("GET", "OPTIONS")
-	
+
 	// Session endpoints with JWT protection - /api/rooms path
 	sessionRouter := r.PathPrefix("/api/rooms").Subrouter()
 	sessionRouter.Use(gateway.jwtMiddleware)
@@ -180,17 +180,17 @@ func main() {
 	sessionRouter.HandleFunc("/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
 	sessionRouter.HandleFunc("/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
 	sessionRouter.HandleFunc("/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
-	
+
 	protected := r.PathPrefix("/api/v1").Subrouter()
 	protected.Use(gateway.jwtMiddleware)
-	
+
 	// Session endpoints (JWT required) - also available under /api/v1/rooms
 	protected.HandleFunc("/rooms/{roomId}", gateway.getRoomHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}", gateway.createRoomHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}", gateway.deleteRoomHandler).Methods("DELETE", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}/participants", gateway.addParticipantHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/rooms/{roomId}/participants/{userId}", gateway.removeParticipantHandler).Methods("DELETE", "OPTIONS")
-	
+
 	// Session queue endpoints (JWT required) - use playback_queue service
 	protected.HandleFunc("/sessions/{roomId}/queue/current", gateway.getSessionCurrentTrackHandler).Methods("GET", "OPTIONS")
 	protected.HandleFunc("/sessions/{roomId}/queue", gateway.getSessionQueueHandler).Methods("GET", "OPTIONS")
@@ -223,7 +223,7 @@ func main() {
 
 	// Recommendations endpoint
 	protected.HandleFunc("/recommendations", gateway.getRecommendationsHandler).Methods("GET", "OPTIONS")
-	
+
 	// Messaging endpoints (proxy to messaging-service)
 	protected.PathPrefix("/messaging/").HandlerFunc(gateway.messagingProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
 
@@ -233,18 +233,18 @@ func main() {
 
 	// Music Requests Service proxy routes
 	protected.PathPrefix("/music-requests").HandlerFunc(gateway.musicRequestsProxyHandler).Methods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-	
+
 	// Update user coins endpoint
 	protected.HandleFunc("/users/{userId}/coins", gateway.updateUserCoinsHandler).Methods("PATCH", "OPTIONS")
-	
+
 	// User search endpoint
 	protected.HandleFunc("/users/search", gateway.searchUsersHandler).Methods("GET", "OPTIONS")
 	// Get user by ID endpoint (protected)
 	protected.HandleFunc("/users/{userId}", gateway.getUserByIdHandler).Methods("GET", "OPTIONS")
-	
+
 	// Charts endpoint (public, no JWT required)
 	r.HandleFunc("/api/v1/charts/top", gateway.getChartsHandler).Methods("GET", "OPTIONS")
-	
+
 	// User taste statistics endpoint (public, no JWT required)
 	r.HandleFunc("/api/v1/users/{userId}/taste", gateway.getUserTasteHandler).Methods("GET", "OPTIONS")
 
@@ -264,7 +264,7 @@ func main() {
 	r.HandleFunc("/api/v1/routes/search", gateway.searchRoutesHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/routes/{routeId}", gateway.getRouteHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/v1/routes", gateway.listRoutesHandler).Methods("GET", "OPTIONS")
-	
+
 	// Protected routes (JWT required)
 	protected.HandleFunc("/routes", gateway.createRouteHandler).Methods("POST", "OPTIONS")
 	protected.HandleFunc("/routes/{routeId}", gateway.updateRouteHandler).Methods("PUT", "OPTIONS")
@@ -293,7 +293,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
-		
+
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 		w.Header().Set("Access-Control-Max-Age", "3600")
@@ -334,7 +334,7 @@ func (g *Gateway) messagingProxyHandler(w http.ResponseWriter, r *http.Request) 
 	r.URL.Host = target.Host
 	r.URL.Scheme = target.Scheme
 	r.Host = target.Host
-	
+
 	// Сохраняем CORS заголовки из middleware перед проксированием
 	corsHeaders := make(map[string]string)
 	for key, values := range w.Header() {
@@ -344,13 +344,13 @@ func (g *Gateway) messagingProxyHandler(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
-	
+
 	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
 	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
 	for key := range corsHeaders {
 		w.Header().Del(key)
 	}
-	
+
 	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		// Удаляем CORS заголовки из ответа сервиса, если они есть
@@ -359,14 +359,14 @@ func (g *Gateway) messagingProxyHandler(w http.ResponseWriter, r *http.Request) 
 		resp.Header.Del("Access-Control-Allow-Methods")
 		resp.Header.Del("Access-Control-Allow-Headers")
 		resp.Header.Del("Access-Control-Max-Age")
-		
+
 		// Устанавливаем CORS заголовки из middleware только один раз
 		for key, value := range corsHeaders {
 			resp.Header.Set(key, value)
 		}
 		return nil
 	}
-	
+
 	proxy.ServeHTTP(w, r)
 }
 
@@ -404,7 +404,7 @@ func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	r.URL.Host = target.Host
 	r.URL.Scheme = target.Scheme
 	r.Host = target.Host
-	
+
 	// Сохраняем CORS заголовки из middleware перед проксированием
 	corsHeaders := make(map[string]string)
 	for key, values := range w.Header() {
@@ -414,13 +414,13 @@ func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Удаляем CORS заголовки из ResponseWriter, чтобы избежать дублирования
 	// Reverse proxy может копировать их из ResponseWriter, поэтому удаляем их здесь
 	for key := range corsHeaders {
 		w.Header().Del(key)
 	}
-	
+
 	// Модифицируем ответ, чтобы установить CORS заголовки только один раз
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		// Удаляем CORS заголовки из ответа сервиса, если они есть
@@ -429,14 +429,14 @@ func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Header.Del("Access-Control-Allow-Methods")
 		resp.Header.Del("Access-Control-Allow-Headers")
 		resp.Header.Del("Access-Control-Max-Age")
-		
+
 		// Устанавливаем CORS заголовки из middleware только один раз
 		for key, value := range corsHeaders {
 			resp.Header.Set(key, value)
 		}
 		return nil
 	}
-	
+
 	proxy.ServeHTTP(w, r)
 }
 
@@ -468,7 +468,7 @@ func (g *Gateway) musicRequestsProxyHandler(w http.ResponseWriter, r *http.Reque
 	r.URL.Host = target.Host
 	r.URL.Scheme = target.Scheme
 	r.Host = target.Host
-	
+
 	// Handle CORS
 	corsHeaders := make(map[string]string)
 	for key, values := range w.Header() {
@@ -478,24 +478,24 @@ func (g *Gateway) musicRequestsProxyHandler(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	}
-	
+
 	for key := range corsHeaders {
 		w.Header().Del(key)
 	}
-	
+
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		resp.Header.Del("Access-Control-Allow-Origin")
 		resp.Header.Del("Access-Control-Allow-Credentials")
 		resp.Header.Del("Access-Control-Allow-Methods")
 		resp.Header.Del("Access-Control-Allow-Headers")
 		resp.Header.Del("Access-Control-Max-Age")
-		
+
 		for key, value := range corsHeaders {
 			resp.Header.Set(key, value)
 		}
 		return nil
 	}
-	
+
 	proxy.ServeHTTP(w, r)
 }
 
@@ -503,33 +503,33 @@ func (g *Gateway) musicRequestsProxyHandler(w http.ResponseWriter, r *http.Reque
 func (g *Gateway) updateUserCoinsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userID := vars["userId"]
-	
+
 	// Parse request body
 	var req struct {
 		CoinsDelta int32 `json:"coins_delta"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Call gRPC service
 	grpcReq := &pb.UpdateCoinsRequest{
 		UserId:     userID,
 		CoinsDelta: req.CoinsDelta,
 	}
-	
+
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	
+
 	resp, err := g.userClient.UpdateCoins(ctx, grpcReq)
 	if err != nil {
 		log.Printf("Failed to update coins: %v", err)
 		writeError(w, "Failed to update coins", http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": resp.Success})
 }
@@ -541,7 +541,7 @@ func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			writeError(w, "Missing Authorization header", http.StatusUnauthorized)
@@ -813,6 +813,7 @@ func (g *Gateway) updateMeHandler(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	object{users=[]object}
 //	@Failure		400		{object}	ErrorResponse
 //	@Failure		401		{object}	ErrorResponse
+//
 // getUserByIdHandler handles getting user by ID
 func (g *Gateway) getUserByIdHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -834,7 +835,7 @@ func (g *Gateway) getUserByIdHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-//	@Router			/api/v1/users/search [get]
+// @Router			/api/v1/users/search [get]
 func (g *Gateway) searchUsersHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
@@ -1371,7 +1372,7 @@ func (g *Gateway) getChartsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
-	
+
 	resp, err := http.Get(targetURL)
 	if err != nil {
 		log.Printf("Failed to get charts: %v", err)
@@ -1379,7 +1380,7 @@ func (g *Gateway) getChartsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	// Proxy response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -1395,7 +1396,7 @@ func (g *Gateway) getNewReleasesHandler(w http.ResponseWriter, r *http.Request) 
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
-	
+
 	resp, err := http.Get(targetURL)
 	if err != nil {
 		log.Printf("Failed to get new releases: %v", err)
@@ -1403,7 +1404,7 @@ func (g *Gateway) getNewReleasesHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	// Proxy response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -1420,13 +1421,13 @@ func (g *Gateway) getUserTasteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Build URL
 	targetURL := g.recommendationsURL + "/users/" + userID + "/taste"
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
-	
+
 	resp, err := http.Get(targetURL)
 	if err != nil {
 		log.Printf("Failed to get user taste: %v", err)
@@ -1434,7 +1435,7 @@ func (g *Gateway) getUserTasteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	
+
 	// Proxy response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
@@ -2085,17 +2086,17 @@ func (g *Gateway) proxyRoutesHandler(w http.ResponseWriter, r *http.Request, pat
 		return
 	}
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
+
 	// Preserve original path for proper routing
 	originalPath := r.URL.Path
 	r.URL.Path = path
 	r.URL.Host = targetURL.Host
 	r.URL.Scheme = targetURL.Scheme
 	r.Host = targetURL.Host
-	
+
 	// CORS headers are already set by corsMiddleware, don't duplicate
 	proxy.ServeHTTP(w, r)
-	
+
 	// Restore original path
 	r.URL.Path = originalPath
 }

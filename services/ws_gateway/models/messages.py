@@ -65,4 +65,3 @@ class ServerMessage(BaseModel):
 
     class Config:
         populate_by_name = True
-

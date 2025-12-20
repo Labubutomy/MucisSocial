@@ -39,16 +39,20 @@ class ConnectionManager:
         """Connect a WebSocket client."""
         try:
             print(f"[ConnectionManager] Connecting client - room_id: {room_id}")
-            
+
             # Token already validated in endpoint, just extract user_id
             claims = self.jwt_service.validate_token(token)
             if not claims:
-                print(f"[ConnectionManager] JWT token validation failed (should not happen)")
+                print(
+                    f"[ConnectionManager] JWT token validation failed (should not happen)"
+                )
                 return None
-                
+
             user_id = claims.get("user_id")
             if not user_id:
-                print(f"[ConnectionManager] No user_id in JWT claims (should not happen)")
+                print(
+                    f"[ConnectionManager] No user_id in JWT claims (should not happen)"
+                )
                 return None
 
             print(f"[ConnectionManager] User ID extracted: {user_id}")
@@ -72,8 +76,11 @@ class ConnectionManager:
                 await self.redis_service.add_connection(room_id, user_id, connection_id)
                 print(f"[ConnectionManager] Connection added to Redis")
             except Exception as e:
-                print(f"[ConnectionManager] Warning: Failed to add connection to Redis: {e}")
+                print(
+                    f"[ConnectionManager] Warning: Failed to add connection to Redis: {e}"
+                )
                 import traceback
+
                 traceback.print_exc()
                 # Continue anyway - connection is established in memory
 
@@ -81,6 +88,7 @@ class ConnectionManager:
         except Exception as e:
             print(f"[ConnectionManager] Error in connect: {e}")
             import traceback
+
             traceback.print_exc()
             try:
                 await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason=str(e))
@@ -118,27 +126,28 @@ class ConnectionManager:
                 await self.disconnect(connection_id)
 
     async def broadcast_to_room(
-        self, message: dict[str, Any], room_id: str, exclude_connection_id: str | None = None
+        self,
+        message: dict[str, Any],
+        room_id: str,
+        exclude_connection_id: str | None = None,
     ) -> None:
         """Broadcast message to all connections in a room."""
         connections = await self.redis_service.get_room_connections(room_id)
-        
+
         for conn_str in connections:
             # Parse connection string (user_id:connection_id)
             parts = conn_str.split(":", 1)
             if len(parts) != 2:
                 continue
             connection_id = parts[1]
-            
+
             if connection_id == exclude_connection_id:
                 continue
-                
+
             if connection_id in self.active_connections:
                 await self.send_personal_message(message, connection_id)
 
-    async def handle_message(
-        self, connection_id: str, message: dict[str, Any]
-    ) -> None:
+    async def handle_message(self, connection_id: str, message: dict[str, Any]) -> None:
         """Handle incoming message from client."""
         try:
             client_message = ClientMessage(**message)
@@ -172,12 +181,15 @@ class ConnectionManager:
 
         # Send to Kafka
         try:
-            print(f"[ConnectionManager] Sending client event to Kafka: action={client_message.action}, room_id={client_message.room_id}")
+            print(
+                f"[ConnectionManager] Sending client event to Kafka: action={client_message.action}, room_id={client_message.room_id}"
+            )
             self.kafka_service.send_client_event(client_message)
             print(f"[ConnectionManager] Client event sent to Kafka successfully")
         except Exception as e:
             print(f"[ConnectionManager] Error sending event to Kafka: {e}")
             import traceback
+
             traceback.print_exc()
             error_msg = ServerMessage(
                 type=ServerMessageType.ERROR,
@@ -193,6 +205,7 @@ class ConnectionManager:
             """Synchronous Kafka consumer loop running in thread."""
             import threading
             import time
+
             while True:
                 try:
                     if not self.kafka_service.consumer:
@@ -201,14 +214,16 @@ class ConnectionManager:
 
                     # Poll for messages (blocking)
                     message_pack = self.kafka_service.consumer.poll(timeout_ms=1000)
-                    
+
                     for topic_partition, messages in message_pack.items():
                         for message in messages:
                             try:
                                 topic = topic_partition.topic
                                 value = message.value
-                                print(f"[WS Gateway] Kafka message from topic={topic}: {value}")
-                                
+                                print(
+                                    f"[WS Gateway] Kafka message from topic={topic}: {value}"
+                                )
+
                                 if topic == self.settings.kafka_sync_topic:
                                     # старый путь синхронизации сессий
                                     self._handle_session_sync_message(loop, value)
@@ -217,8 +232,11 @@ class ConnectionManager:
                                 elif topic == self.settings.kafka_music_requests_topic:
                                     self._handle_music_request_event(loop, value)
                             except Exception as e:
-                                print(f"[WS Gateway] Error processing Kafka message: {e}")
+                                print(
+                                    f"[WS Gateway] Error processing Kafka message: {e}"
+                                )
                                 import traceback
+
                                 traceback.print_exc()
 
                 except Exception as e:
@@ -227,10 +245,13 @@ class ConnectionManager:
 
         # Run consumer in background thread
         import threading
+
         thread = threading.Thread(target=consume_loop, daemon=True)
         thread.start()
 
-    def _handle_session_sync_message(self, loop: asyncio.AbstractEventLoop, sync_data: dict[str, Any]) -> None:
+    def _handle_session_sync_message(
+        self, loop: asyncio.AbstractEventLoop, sync_data: dict[str, Any]
+    ) -> None:
         from datetime import datetime
 
         print(f"[WS Gateway] ========== RECEIVED SYNC MESSAGE FROM KAFKA ==========")
@@ -240,7 +261,9 @@ class ConnectionManager:
         state = sync_data.get("state")
 
         if not room_id or not state:
-            print(f"[WS Gateway] Skipping sync message - missing room_id or state: room_id={room_id}, state={state is not None}")
+            print(
+                f"[WS Gateway] Skipping sync message - missing room_id or state: room_id={room_id}, state={state is not None}"
+            )
             return
 
         timestamp = None
@@ -251,7 +274,9 @@ class ConnectionManager:
                     dt = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
                     timestamp = dt.timestamp()
                 except Exception as e:
-                    print(f"[WS Gateway] Failed to parse timestamp {timestamp_value}: {e}")
+                    print(
+                        f"[WS Gateway] Failed to parse timestamp {timestamp_value}: {e}"
+                    )
             elif isinstance(timestamp_value, (int, float)):
                 timestamp = float(timestamp_value)
 
@@ -268,7 +293,9 @@ class ConnectionManager:
             loop,
         )
 
-    def _handle_messaging_event(self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]) -> None:
+    def _handle_messaging_event(
+        self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]
+    ) -> None:
         """Handle messaging events from messaging-service."""
         event_type = event.get("event_type")
         print(f"[WS Gateway] Handling messaging event: {event_type}")
@@ -303,7 +330,9 @@ class ConnectionManager:
                 loop,
             )
 
-    def _handle_music_request_event(self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]) -> None:
+    def _handle_music_request_event(
+        self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]
+    ) -> None:
         """Handle music request events."""
         event_type = event.get("event_type")
         print(f"[WS Gateway] Handling music request event: {event_type}")
@@ -324,7 +353,7 @@ class ConnectionManager:
             message=event,
         )
         message_dict = server_message.model_dump()
-        
+
         # Broadcast to all connections (frontend will filter by user)
         asyncio.run_coroutine_threadsafe(
             self._broadcast_to_all(message_dict),
@@ -356,8 +385,5 @@ def init_manager(
 ) -> ConnectionManager:
     """Initialize global connection manager."""
     global _manager
-    _manager = ConnectionManager(
-        redis_service, kafka_service, jwt_service, settings
-    )
+    _manager = ConnectionManager(redis_service, kafka_service, jwt_service, settings)
     return _manager
-
