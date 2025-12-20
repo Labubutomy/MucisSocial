@@ -21,6 +21,7 @@
     "hls.js": "^1.5.12",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^5.14.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-leaflet": "^4.2.1",

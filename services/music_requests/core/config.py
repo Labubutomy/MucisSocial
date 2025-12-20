@@ -47,6 +47,15 @@ class Settings(BaseSettings):
         default=1,
         description="Cost in coins for making a track request",
     )
+    
+    kafka_brokers: str = Field(
+        default="redpanda:9092",
+        description="Kafka brokers (comma-separated)",
+    )
+    kafka_music_requests_topic: str = Field(
+        default="music-request-events",
+        description="Kafka topic for music request events",
+    )
 
 
 @lru_cache()

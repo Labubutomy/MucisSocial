@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_settings
 from core.database import get_db
+from core.kafka import send_music_request_event
 from models import CoinTransaction, RequestSession, TrackRequest
 from schemas import (
     RequestSessionCreate,
@@ -112,12 +113,34 @@ async def update_user_coins(user_id: UUID, coins_delta: int, authorization: str)
             )
 
 
-async def add_track_to_queue(artist_id: UUID, track_id: UUID) -> None:
-    """Add accepted track to artist's playback queue via gRPC"""
-    # TODO: Implement gRPC call to playback_queue service
-    # For now, we'll skip this and implement it later
-    logger.info(f"Adding track {track_id} to artist {artist_id} queue")
-    pass
+async def add_track_to_queue(artist_id: UUID, track_id: UUID, authorization: str) -> None:
+    """Add accepted track to artist's playback queue via gateway API"""
+    async with httpx.AsyncClient() as client:
+        try:
+            # First, ensure the artist has a queue (create if not exists)
+            # Use context_type="music_request" for music request queues
+            context_type = "music_request"
+            context_id = str(artist_id)
+            
+            # Add track to the queue via gateway
+            response = await client.post(
+                f"{settings.gateway_url}/api/v1/sessions/{context_id}/queue/tracks",
+                json={"track_id": str(track_id)},
+                headers={"Authorization": authorization},
+                timeout=10.0,
+            )
+            
+            if response.status_code == 404:
+                # Queue doesn't exist, try to create it first (for non-user contexts)
+                logger.info(f"Queue not found for artist {artist_id}, creating...")
+                # For now, just log the attempt - the playback queue handles this
+            
+            response.raise_for_status()
+            logger.info(f"Successfully added track {track_id} to artist {artist_id} queue")
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to add track to queue: {e}")
+            # Don't fail the request, just log the error
+            # The track request is still accepted even if queue addition fails
 
 
 @app.get("/health")
@@ -211,6 +234,26 @@ async def deactivate_session(
     await db.commit()
 
 
+@app.get("/api/v1/sessions/code/{session_code}", response_model=RequestSessionOut)
+async def get_session_by_code(
+    session_code: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get session by code (public endpoint for users who want to request)"""
+    result = await db.execute(
+        select(RequestSession).where(RequestSession.session_code == session_code)
+    )
+    session = result.scalar_one_or_none()
+    
+    if not session or not session.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found or inactive")
+    
+    return RequestSessionOut(
+        **session.__dict__,
+        qr_code_url=f"/api/v1/sessions/{session.session_code}/qr",
+    )
+
+
 @app.get("/api/v1/sessions/{session_code}/qr")
 async def get_qr_code(session_code: str, db: Annotated[AsyncSession, Depends(get_db)]):
     """Generate QR code for a session"""
@@ -295,6 +338,15 @@ async def create_track_request(
     await db.commit()
     await db.refresh(new_request)
     
+    # Send Kafka event for WebSocket notification
+    send_music_request_event("request_created", {
+        "request_id": str(new_request.id),
+        "artist_id": str(session.artist_id),
+        "requester_id": str(user_id),
+        "track_id": str(request_in.track_id),
+        "message": request_in.message,
+    })
+    
     return TrackRequestOut(**new_request.__dict__)
 
 
@@ -372,7 +424,7 @@ async def handle_track_request(
         await update_user_coins(user_id, settings.coin_cost_per_request, authorization)
         
         # Add track to artist's queue
-        await add_track_to_queue(user_id, track_request.track_id)
+        await add_track_to_queue(user_id, track_request.track_id, authorization)
     else:
         # Refund coin to requester
         await update_user_coins(track_request.requester_id, settings.coin_cost_per_request, authorization)
@@ -388,10 +440,29 @@ async def handle_track_request(
     await db.commit()
     await db.refresh(track_request)
     
+    # Send Kafka event for WebSocket notification
+    event_type = "request_accepted" if action.action == "accept" else "request_declined"
+    send_music_request_event(event_type, {
+        "request_id": str(track_request.id),
+        "artist_id": str(user_id),
+        "requester_id": str(track_request.requester_id),
+        "track_id": str(track_request.track_id),
+    })
+    
     return TrackRequestOut(**track_request.__dict__)
 
 
 # ==================== Coins ====================
+
+@app.get("/api/v1/me/coins", response_model=UserCoinsOut)
+async def get_my_coins(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    authorization: Annotated[str, Header(alias="Authorization")],
+):
+    """Get current user's coin balance"""
+    coins = await get_user_coins(user_id, authorization)
+    return UserCoinsOut(user_id=user_id, coins=coins)
+
 
 @app.get("/api/v1/users/{user_id}/coins", response_model=UserCoinsOut)
 async def get_coins(

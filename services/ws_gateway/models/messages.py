@@ -44,6 +44,10 @@ class ServerMessageType(str, Enum):
     CONVERSATION_READ = "conversation_read"
     ERROR = "error"
     PONG = "pong"
+    # Music request events
+    MUSIC_REQUEST_NEW = "music_request_new"
+    MUSIC_REQUEST_ACCEPTED = "music_request_accepted"
+    MUSIC_REQUEST_DECLINED = "music_request_declined"
 
 
 class ServerMessage(BaseModel):
@@ -56,6 +60,8 @@ class ServerMessage(BaseModel):
     conversation_id: str | None = None
     error: str | None = None
     timestamp: float | None = None
+    # Music request data
+    music_request: dict[str, Any] | None = None
 
     class Config:
         populate_by_name = True

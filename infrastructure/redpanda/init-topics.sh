@@ -40,6 +40,13 @@ rpk topic create music-session-sync \
     --topic-config retention.ms=604800000 \
     --topic-config compression.type=snappy
 
+rpk topic create music-request-events \
+    --brokers redpanda:9092 \
+    --partitions 3 \
+    --replicas 1 \
+    --topic-config retention.ms=604800000 \
+    --topic-config compression.type=snappy
+
 echo "Topics created successfully!"
 
 rpk topic list --brokers redpanda:9092

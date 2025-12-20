@@ -61,6 +61,7 @@ type Gateway struct {
 	recommendationsURL string
 	messagingURL       string
 	friendsURL         string
+	musicRequestsURL   string
 	jwtSecret          []byte
 }
 
@@ -131,6 +132,7 @@ func main() {
 		recommendationsURL: getEnv("RECOMMENDATIONS_SERVICE_URL", "http://recommendations:8080"),
 		messagingURL:       getEnv("MESSAGING_SERVICE_URL", "http://messaging-service:8080"),
 		friendsURL:         getEnv("FRIENDS_SERVICE_URL", "http://friends-service:8080"),
+		musicRequestsURL:   getEnv("MUSIC_REQUESTS_SERVICE_URL", "http://music-requests-service:8080"),
 		jwtSecret:          []byte(getEnv("JWT_SECRET", "your-super-secret-access-key-change-in-production")),
 	}
 
@@ -228,6 +230,12 @@ func main() {
 	// Friends endpoints (proxy to friends-service)
 	// Обрабатываем как /friends, так и /friends/*
 	protected.PathPrefix("/friends").HandlerFunc(gateway.friendsProxyHandler).Methods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+
+	// Music Requests Service proxy routes
+	protected.PathPrefix("/music-requests").HandlerFunc(gateway.musicRequestsProxyHandler).Methods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+	
+	// Update user coins endpoint
+	protected.HandleFunc("/users/{userId}/coins", gateway.updateUserCoinsHandler).Methods("PATCH", "OPTIONS")
 	
 	// User search endpoint
 	protected.HandleFunc("/users/search", gateway.searchUsersHandler).Methods("GET", "OPTIONS")
@@ -430,6 +438,100 @@ func (g *Gateway) friendsProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	proxy.ServeHTTP(w, r)
+}
+
+// musicRequestsProxyHandler proxies all /api/v1/music-requests/* requests to music-requests-service
+func (g *Gateway) musicRequestsProxyHandler(w http.ResponseWriter, r *http.Request) {
+	target, err := url.Parse(g.musicRequestsURL)
+	if err != nil {
+		log.Printf("Failed to parse music requests service URL: %v", err)
+		writeError(w, "Music requests service unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	// Map /api/v1/music-requests/* to /api/v1/*
+	originalPath := r.URL.Path
+	prefix := "/api/v1/music-requests"
+	log.Printf("[MusicRequests Proxy] Original path: %s", originalPath)
+	if strings.HasPrefix(originalPath, prefix) {
+		trimmed := strings.TrimPrefix(originalPath, prefix)
+		if trimmed == "" {
+			r.URL.Path = "/api/v1"
+		} else {
+			r.URL.Path = "/api/v1" + trimmed
+		}
+		log.Printf("[MusicRequests Proxy] Proxying to: %s%s", target.String(), r.URL.Path)
+	}
+
+	r.URL.Host = target.Host
+	r.URL.Scheme = target.Scheme
+	r.Host = target.Host
+	
+	// Handle CORS
+	corsHeaders := make(map[string]string)
+	for key, values := range w.Header() {
+		if strings.HasPrefix(key, "Access-Control-") {
+			if len(values) > 0 {
+				corsHeaders[key] = values[0]
+			}
+		}
+	}
+	
+	for key := range corsHeaders {
+		w.Header().Del(key)
+	}
+	
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		
+		for key, value := range corsHeaders {
+			resp.Header.Set(key, value)
+		}
+		return nil
+	}
+	
+	proxy.ServeHTTP(w, r)
+}
+
+// updateUserCoinsHandler updates user coins balance via gRPC
+func (g *Gateway) updateUserCoinsHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+	
+	// Parse request body
+	var req struct {
+		CoinsDelta int32 `json:"coins_delta"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Call gRPC service
+	grpcReq := &pb.UpdateCoinsRequest{
+		UserId:     userID,
+		CoinsDelta: req.CoinsDelta,
+	}
+	
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	
+	resp, err := g.userClient.UpdateCoins(ctx, grpcReq)
+	if err != nil {
+		log.Printf("Failed to update coins: %v", err)
+		writeError(w, "Failed to update coins", http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": resp.Success})
 }
 
 func (g *Gateway) jwtMiddleware(next http.Handler) http.Handler {

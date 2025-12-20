@@ -35,6 +35,7 @@ class KafkaService:
         topics = [
             self.settings.kafka_sync_topic,
             self.settings.kafka_messaging_topic,
+            self.settings.kafka_music_requests_topic,
         ]
         self.consumer = KafkaConsumer(
             *topics,

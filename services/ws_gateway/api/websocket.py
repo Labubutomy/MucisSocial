@@ -214,6 +214,8 @@ class ConnectionManager:
                                     self._handle_session_sync_message(loop, value)
                                 elif topic == self.settings.kafka_messaging_topic:
                                     self._handle_messaging_event(loop, value)
+                                elif topic == self.settings.kafka_music_requests_topic:
+                                    self._handle_music_request_event(loop, value)
                             except Exception as e:
                                 print(f"[WS Gateway] Error processing Kafka message: {e}")
                                 import traceback
@@ -300,6 +302,34 @@ class ConnectionManager:
                 self._broadcast_to_all(message_dict),
                 loop,
             )
+
+    def _handle_music_request_event(self, loop: asyncio.AbstractEventLoop, event: dict[str, Any]) -> None:
+        """Handle music request events."""
+        event_type = event.get("event_type")
+        print(f"[WS Gateway] Handling music request event: {event_type}")
+
+        # Determine the server message type based on event
+        if event_type == "request_created":
+            msg_type = ServerMessageType.MUSIC_REQUEST_NEW
+        elif event_type == "request_accepted":
+            msg_type = ServerMessageType.MUSIC_REQUEST_ACCEPTED
+        elif event_type == "request_declined":
+            msg_type = ServerMessageType.MUSIC_REQUEST_DECLINED
+        else:
+            print(f"[WS Gateway] Unknown music request event type: {event_type}")
+            return
+
+        server_message = ServerMessage(
+            type=msg_type,
+            message=event,
+        )
+        message_dict = server_message.model_dump()
+        
+        # Broadcast to all connections (frontend will filter by user)
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast_to_all(message_dict),
+            loop,
+        )
 
     async def _broadcast_to_all(self, message: dict[str, Any]) -> None:
         """Broadcast message to all active WebSocket connections (for messaging events)."""

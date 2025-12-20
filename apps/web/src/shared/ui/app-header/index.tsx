@@ -42,6 +42,7 @@ export const AppHeader = () => {
     navigateToHome: routes.home.navigate,
     navigateToProfile: routes.profile.navigate,
     navigateToMessages: routes.messages.navigate,
+    navigateToMusicRequests: routes.musicRequests.navigate,
     navigateToAuth: routes.auth.navigate,
     changeQuery: queryChanged,
     setFocus: focusChanged,
@@ -168,6 +169,27 @@ export const AppHeader = () => {
         </form>
         {isAuthenticated ? (
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => navigateToMusicRequests({ params: {}, query: {} })}
+              className="flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-secondary/40 transition hover:border-primary hover:bg-secondary/60"
+              aria-label="Заказы музыки"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
+            </button>
             <button
               type="button"
               onClick={() => navigateToMessages({ params: {}, query: {} })}
