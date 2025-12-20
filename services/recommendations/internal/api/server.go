@@ -65,6 +65,7 @@ func (s *Server) setupRoutes() {
 
 	s.router.GET("/health", s.healthHandler)
 	s.router.POST("/recommendations", s.recommendationsHandler)
+	s.router.POST("/recommendations/group", s.groupRecommendationsHandler)
 	s.router.GET("/charts/top", s.chartsTopHandler)
 	s.router.GET("/charts/top/nearby", s.chartsTopNearbyHandler)
 	s.router.GET("/tracks/new", s.newReleasesHandler)
@@ -97,6 +98,21 @@ type RecommendationFilters struct {
 // RecommendationResponse represents the API response
 type RecommendationResponse struct {
 	Tracks []string `json:"tracks"`
+}
+
+// GroupRecommendationRequest represents a group recommendation request
+type GroupRecommendationRequest struct {
+	UserIDs []string               `json:"user_ids" binding:"required,min=1"`
+	Limit   int                    `json:"limit"`
+	Filters *RecommendationFilters `json:"filters"`
+}
+
+// GroupRecommendationResponse represents the group recommendation API response
+type GroupRecommendationResponse struct {
+	Tracks      []string `json:"tracks"`
+	GroupSize   int      `json:"group_size"`
+	UserIDs     []string `json:"user_ids"`
+	Description string   `json:"description"`
 }
 
 func (s *Server) healthHandler(c *gin.Context) {
@@ -138,6 +154,62 @@ func (s *Server) recommendationsHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, RecommendationResponse{
 		Tracks: tracks,
+	})
+}
+
+func (s *Server) groupRecommendationsHandler(c *gin.Context) {
+	var req GroupRecommendationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_ids cannot be empty"})
+		return
+	}
+
+	if len(req.UserIDs) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "maximum 50 users allowed in a group"})
+		return
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+
+	// Fetch profiles for all users in the group
+	profiles := make([]*models.UserProfile, 0, len(req.UserIDs))
+	for _, userID := range req.UserIDs {
+		profile := s.userProfileStore.GetOrCreate(userID)
+		profiles = append(profiles, profile)
+	}
+
+	var filterOpts *engine.FilterOptions
+	if req.Filters != nil {
+		filterOpts = &engine.FilterOptions{
+			ExcludeExplicit: req.Filters.ExcludeExplicit,
+			Genres:          req.Filters.Genres,
+			FreshDays:       req.Filters.FreshDays,
+		}
+	}
+
+	groupReq := &engine.GroupRecommendRequest{
+		UserIDs: req.UserIDs,
+		Limit:   req.Limit,
+		Filters: filterOpts,
+	}
+
+	tracks := s.engine.RecommendForGroup(profiles, groupReq)
+
+	c.JSON(http.StatusOK, GroupRecommendationResponse{
+		Tracks:      tracks,
+		GroupSize:   len(req.UserIDs),
+		UserIDs:     req.UserIDs,
+		Description: "Group recommendations that balance preferences across all users in the room",
 	})
 }
 
