@@ -23,15 +23,17 @@ type MinIOBackupStore struct {
 	userProfileStore UserProfileStore
 	globalStatsStore GlobalStatsStore
 	searchQueryStore SearchQueryStore
+	geoTopStore      GeoTopStore
 }
 
 type BackupData struct {
-	Tracks          map[string]*models.Track       `json:"tracks"`
-	UserProfiles   map[string]*models.UserProfile  `json:"user_profiles"`
-	GlobalStats     map[string]int                 `json:"global_stats"`
-	MonthlyStats    map[string]int                 `json:"monthly_stats"`
-	SearchQueries   map[string]SearchQueryData     `json:"search_queries"`
-	Timestamp       time.Time                      `json:"timestamp"`
+	Tracks        map[string]*models.Track       `json:"tracks"`
+	UserProfiles  map[string]*models.UserProfile `json:"user_profiles"`
+	GlobalStats   map[string]int                 `json:"global_stats"`
+	MonthlyStats  map[string]int                 `json:"monthly_stats"`
+	SearchQueries map[string]SearchQueryData     `json:"search_queries"`
+	GeoTopData    *GeoTopSnapshot                `json:"geo_top_data,omitempty"`
+	Timestamp     time.Time                      `json:"timestamp"`
 }
 
 func NewMinIOBackupStore(
@@ -40,6 +42,7 @@ func NewMinIOBackupStore(
 	userProfileStore UserProfileStore,
 	globalStatsStore GlobalStatsStore,
 	searchQueryStore SearchQueryStore,
+	geoTopStore GeoTopStore,
 ) (*MinIOBackupStore, error) {
 
 	client, err := minio.New(endpoint, &minio.Options{
@@ -71,6 +74,7 @@ func NewMinIOBackupStore(
 		userProfileStore: userProfileStore,
 		globalStatsStore: globalStatsStore,
 		searchQueryStore: searchQueryStore,
+		geoTopStore:      geoTopStore,
 	}
 
 	return backup, nil
@@ -125,7 +129,7 @@ func (s *MinIOBackupStore) LoadFromBackup() error {
 			}
 		}
 		log.Printf("Restored %d track play counts from backup", len(backup.GlobalStats))
-		
+
 		// Restore monthly stats (if available)
 		if backup.MonthlyStats != nil {
 			memStatsStore.mu.Lock()
@@ -143,6 +147,12 @@ func (s *MinIOBackupStore) LoadFromBackup() error {
 			memSearchStore.Restore(backup.SearchQueries)
 			log.Printf("Restored search queries from backup")
 		}
+	}
+
+	// Restore geo top data
+	if s.geoTopStore != nil && backup.GeoTopData != nil {
+		s.geoTopStore.Restore(backup.GeoTopData)
+		log.Printf("Restored geo top data from backup (geohashes: %d)", len(backup.GeoTopData.Counts))
 	}
 
 	log.Printf("Successfully loaded backup from %v", backup.Timestamp)
@@ -185,6 +195,11 @@ func (s *MinIOBackupStore) SaveBackup() error {
 	// Collect search queries
 	if memSearchStore, ok := s.searchQueryStore.(*InMemorySearchQueryStore); ok {
 		backup.SearchQueries = memSearchStore.GetAll()
+	}
+
+	// Collect geo top data
+	if s.geoTopStore != nil {
+		backup.GeoTopData = s.geoTopStore.Snapshot()
 	}
 
 	// Serialize backup

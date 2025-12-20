@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 type Config struct {
 	HTTPPort             string
@@ -16,6 +20,13 @@ type Config struct {
 	MinIOSecretKey  string
 	MinIOBucketName string
 	BackupInterval  string // e.g., "5m", "1h"
+
+	// Geo Top configuration
+	EnableGeoTop         bool
+	GeohashPrecision     int
+	GeoTopCacheTTL       time.Duration
+	GeoTopMaxPerGeo      int
+	GeoTopDefaultRadiusM int
 }
 
 func Load() *Config {
@@ -33,12 +44,37 @@ func Load() *Config {
 		MinIOSecretKey:  getEnv("MINIO_SECRET_KEY", "minioadmin"),
 		MinIOBucketName: getEnv("MINIO_BUCKET_NAME", "recommendations"),
 		BackupInterval:  getEnv("BACKUP_INTERVAL", "5m"),
+
+		// Geo Top config
+		EnableGeoTop:         getEnv("ENABLE_GEO_TOP", "false") == "true",
+		GeohashPrecision:     getEnvInt("GEOHASH_PRECISION", 6),
+		GeoTopCacheTTL:       getEnvDuration("GEO_TOP_CACHE_TTL", 60*time.Second),
+		GeoTopMaxPerGeo:      getEnvInt("GEO_TOP_MAX_PER_GEO", 1000),
+		GeoTopDefaultRadiusM: getEnvInt("GEO_TOP_DEFAULT_RADIUS_M", 1000),
 	}
 }
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
 	}
 	return defaultValue
 }

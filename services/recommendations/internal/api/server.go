@@ -20,6 +20,10 @@ type Server struct {
 	trackStore       store.TrackStore
 	globalStatsStore store.GlobalStatsStore
 	searchQueryStore store.SearchQueryStore
+	geoTopStore      store.GeoTopStore
+	enableGeoTop     bool
+	geohashPrecision int
+	defaultRadiusM   int
 	router           *gin.Engine
 }
 
@@ -31,6 +35,10 @@ func NewServer(
 	trackStore store.TrackStore,
 	globalStatsStore store.GlobalStatsStore,
 	searchQueryStore store.SearchQueryStore,
+	geoTopStore store.GeoTopStore,
+	enableGeoTop bool,
+	geohashPrecision int,
+	defaultRadiusM int,
 ) *Server {
 	s := &Server{
 		port:             port,
@@ -39,6 +47,10 @@ func NewServer(
 		trackStore:       trackStore,
 		globalStatsStore: globalStatsStore,
 		searchQueryStore: searchQueryStore,
+		geoTopStore:      geoTopStore,
+		enableGeoTop:     enableGeoTop,
+		geohashPrecision: geohashPrecision,
+		defaultRadiusM:   defaultRadiusM,
 	}
 
 	s.setupRoutes()
@@ -54,6 +66,7 @@ func (s *Server) setupRoutes() {
 	s.router.GET("/health", s.healthHandler)
 	s.router.POST("/recommendations", s.recommendationsHandler)
 	s.router.GET("/charts/top", s.chartsTopHandler)
+	s.router.GET("/charts/top/nearby", s.chartsTopNearbyHandler)
 	s.router.GET("/tracks/new", s.newReleasesHandler)
 	s.router.GET("/users/:user_id/taste", s.userTasteHandler)
 	s.router.GET("/search/trending", s.trendingQueriesHandler)
@@ -232,8 +245,8 @@ func (s *Server) newReleasesHandler(c *gin.Context) {
 
 // UserTasteResponse represents the user taste statistics API response
 type UserTasteResponse struct {
-	UserID   string   `json:"user_id"`
-	TopGenres []GenreStat `json:"top_genres"`
+	UserID     string       `json:"user_id"`
+	TopGenres  []GenreStat  `json:"top_genres"`
 	TopArtists []ArtistStat `json:"top_artists"`
 }
 
@@ -258,8 +271,8 @@ func (s *Server) userTasteHandler(c *gin.Context) {
 	if !ok {
 		// Return empty taste if user not found
 		c.JSON(http.StatusOK, UserTasteResponse{
-			UserID:    userID,
-			TopGenres: []GenreStat{},
+			UserID:     userID,
+			TopGenres:  []GenreStat{},
 			TopArtists: []ArtistStat{},
 		})
 		return
@@ -316,8 +329,8 @@ func (s *Server) userTasteHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, UserTasteResponse{
-		UserID:    userID,
-		TopGenres: topGenres,
+		UserID:     userID,
+		TopGenres:  topGenres,
 		TopArtists: topArtists,
 	})
 }
@@ -400,11 +413,13 @@ func (s *Server) AddIngestEndpoints(
 
 	s.router.POST("/ingest/listening", func(c *gin.Context) {
 		var req struct {
-			EventType       string `json:"event_type"`
-			UserID          string `json:"user_id"`
-			TrackID         string `json:"track_id"`
-			ListenedSeconds int    `json:"listened_seconds"`
-			Timestamp       int64  `json:"ts"`
+			EventType       string   `json:"event_type"`
+			UserID          string   `json:"user_id"`
+			TrackID         string   `json:"track_id"`
+			ListenedSeconds int      `json:"listened_seconds"`
+			Timestamp       int64    `json:"ts"`
+			Lat             *float64 `json:"lat,omitempty"`
+			Lon             *float64 `json:"lon,omitempty"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -425,6 +440,108 @@ func (s *Server) AddIngestEndpoints(
 		userProfileStore.Update(profile)
 		globalStatsStore.IncrementPlayCount(req.TrackID)
 
+		// Process geo coordinates if enabled and provided
+		if s.enableGeoTop && s.geoTopStore != nil && req.Lat != nil && req.Lon != nil {
+			geohash := store.EncodeGeohash(*req.Lat, *req.Lon, s.geohashPrecision)
+			s.geoTopStore.Incr(geohash, req.TrackID, 1)
+		}
+
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+}
+
+// chartsTopNearbyHandler returns top tracks in a geographic radius
+func (s *Server) chartsTopNearbyHandler(c *gin.Context) {
+	// Check if feature is enabled
+	if !s.enableGeoTop {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"error": "Geo-based top charts feature is not enabled. Set ENABLE_GEO_TOP=true to enable.",
+		})
+		return
+	}
+
+	// Parse query parameters
+	latStr := c.Query("lat")
+	lonStr := c.Query("lon")
+	radiusMStr := c.DefaultQuery("radius_m", strconv.Itoa(s.defaultRadiusM))
+	limitStr := c.DefaultQuery("limit", "20")
+
+	if latStr == "" || lonStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "lat and lon query parameters are required",
+		})
+		return
+	}
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid lat parameter",
+		})
+		return
+	}
+
+	lon, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid lon parameter",
+		})
+		return
+	}
+
+	radiusM, err := strconv.Atoi(radiusMStr)
+	if err != nil || radiusM <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid radius_m parameter",
+		})
+		return
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid limit parameter",
+		})
+		return
+	}
+
+	// Validate coordinates
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid coordinates: lat must be in [-90, 90], lon in [-180, 180]",
+		})
+		return
+	}
+
+	// Determine precision based on radius
+	precision := store.GeohashPrecisionForRadius(radiusM)
+
+	// Get geohashes covering the radius
+	geohashes := store.ExpandNeighbors(lat, lon, radiusM, precision)
+
+	// Get top tracks for these geohashes
+	topTracks := s.geoTopStore.GetTopForGeohashes(geohashes, limit)
+
+	// Convert to response format
+	trackIDs := make([]string, 0, len(topTracks))
+	counts := make([]gin.H, 0, len(topTracks))
+	for _, tc := range topTracks {
+		trackIDs = append(trackIDs, tc.TrackID)
+		counts = append(counts, gin.H{
+			"track_id": tc.TrackID,
+			"count":    tc.Count,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"meta": gin.H{
+			"precision":         precision,
+			"radius_m":          radiusM,
+			"geohashes_queried": len(geohashes),
+			"center_lat":        lat,
+			"center_lon":        lon,
+		},
+		"track_ids": trackIDs,
+		"tracks":    counts,
 	})
 }

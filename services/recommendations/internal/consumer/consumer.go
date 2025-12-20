@@ -21,7 +21,10 @@ type EventConsumer struct {
 	trackStore       store.TrackStore
 	userProfileStore store.UserProfileStore
 	globalStatsStore store.GlobalStatsStore
+	geoTopStore      store.GeoTopStore
 	tracksServiceURL string // For fallback track loading
+	enableGeoTop     bool
+	geohashPrecision int
 }
 
 // NewEventConsumer creates a new event consumer
@@ -32,7 +35,10 @@ func NewEventConsumer(
 	trackStore store.TrackStore,
 	userProfileStore store.UserProfileStore,
 	globalStatsStore store.GlobalStatsStore,
+	geoTopStore store.GeoTopStore,
 	tracksServiceURL string,
+	enableGeoTop bool,
+	geohashPrecision int,
 ) *EventConsumer {
 	trackReader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
@@ -62,7 +68,10 @@ func NewEventConsumer(
 		trackStore:       trackStore,
 		userProfileStore: userProfileStore,
 		globalStatsStore: globalStatsStore,
+		geoTopStore:      geoTopStore,
 		tracksServiceURL: tracksServiceURL,
+		enableGeoTop:     enableGeoTop,
+		geohashPrecision: geohashPrecision,
 	}
 }
 
@@ -191,7 +200,7 @@ func (c *EventConsumer) handleListeningEvent(data []byte) {
 		} else {
 			log.Printf("tracksServiceURL is empty, cannot load track %s from service", event.TrackID)
 		}
-		
+
 		if !ok {
 			log.Printf("Warning: Track %s not found in TrackStore when processing listening event for user %s. Statistics will not be updated.", event.TrackID, event.UserID)
 			// Still mark track as listened even if metadata is missing
@@ -222,7 +231,15 @@ func (c *EventConsumer) handleListeningEvent(data []byte) {
 	c.userProfileStore.Update(profile)
 	c.globalStatsStore.IncrementPlayCount(event.TrackID)
 
-	log.Printf("Processed listening event: user %s listened to track %s (genres: %v, artist: %s)", 
+	// Update geo-based aggregates if coordinates are provided and feature is enabled
+	if c.enableGeoTop && event.Lat != nil && event.Lon != nil {
+		ghash := store.EncodeGeohash(*event.Lat, *event.Lon, c.geohashPrecision)
+		c.geoTopStore.Incr(ghash, event.TrackID, 1)
+		log.Printf("Updated geo aggregate: geohash=%s, track=%s, lat=%f, lon=%f",
+			ghash, event.TrackID, *event.Lat, *event.Lon)
+	}
+
+	log.Printf("Processed listening event: user %s listened to track %s (genres: %v, artist: %s)",
 		event.UserID, event.TrackID, track.Genres, track.ArtistID)
 }
 
@@ -236,7 +253,7 @@ func (c *EventConsumer) loadTrackFromService(trackID string) *models.Track {
 	client := &http.Client{Timeout: 5 * time.Second}
 	url := fmt.Sprintf("%s/api/tracks/%s", c.tracksServiceURL, trackID)
 	log.Printf("loadTrackFromService: requesting %s", url)
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("loadTrackFromService: failed to create request: %v", err)
@@ -266,7 +283,7 @@ func (c *EventConsumer) loadTrackFromService(trackID string) *models.Track {
 		log.Printf("loadTrackFromService: failed to decode response: %v", err)
 		return nil
 	}
-	
+
 	log.Printf("loadTrackFromService: received track data - ID: %s, ArtistIDs: %v, Genre: %s", trackResp.ID, trackResp.ArtistIDs, trackResp.Genre)
 
 	artistID := ""

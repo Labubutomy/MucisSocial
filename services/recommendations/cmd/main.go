@@ -28,6 +28,19 @@ func main() {
 	globalStatsStore := store.NewInMemoryGlobalStatsStore()
 	searchQueryStore := store.NewInMemorySearchQueryStore()
 
+	// Initialize GeoTopStore if enabled
+	var geoTopStore store.GeoTopStore
+	if cfg.EnableGeoTop {
+		geoTopStore = store.NewInMemoryGeoTopStore(
+			cfg.GeoTopMaxPerGeo,
+			cfg.GeoTopCacheTTL,
+		)
+		log.Printf("Geo-based top charts enabled (precision=%d, cache_ttl=%v)",
+			cfg.GeohashPrecision, cfg.GeoTopCacheTTL)
+	} else {
+		log.Println("Geo-based top charts disabled (set ENABLE_GEO_TOP=true to enable)")
+	}
+
 	// Initialize MinIO backup
 	backupStore, err := store.NewMinIOBackupStore(
 		cfg.MinIOEndpoint,
@@ -38,6 +51,7 @@ func main() {
 		userProfileStore,
 		globalStatsStore,
 		searchQueryStore,
+		geoTopStore,
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize MinIO backup: %v", err)
@@ -71,6 +85,19 @@ func main() {
 	artistGenerator := generators.NewTopArtistsGenerator(trackStore, globalStatsStore, 5, 50)
 	fallbackGenerator := generators.NewFallbackGenerator(trackStore, globalStatsStore, 100)
 
+	// Add LocalTopGenerator if geo feature is enabled
+	generatorList := []engine.CandidateGenerator{genreGenerator, artistGenerator, fallbackGenerator}
+	if cfg.EnableGeoTop && geoTopStore != nil {
+		localTopGenerator := generators.NewLocalTopGenerator(
+			geoTopStore,
+			cfg.GeoTopDefaultRadiusM,
+			cfg.GeohashPrecision,
+			50, // limit for local top candidates
+		)
+		generatorList = append(generatorList, localTopGenerator)
+		log.Println("Added LocalTopGenerator to recommendation engine")
+	}
+
 	// Initialize scorer
 	// NOTE: This is the ML replacement point. To use ML, replace with:
 	// scorer := scorers.NewMLScorer("path/to/model")
@@ -78,7 +105,7 @@ func main() {
 
 	// Build recommendation engine
 	recEngine := engine.NewRecommendationEngine(
-		[]engine.CandidateGenerator{genreGenerator, artistGenerator, fallbackGenerator},
+		generatorList,
 		scorer,
 		trackStore,
 	)
@@ -91,7 +118,10 @@ func main() {
 		trackStore,
 		userProfileStore,
 		globalStatsStore,
+		geoTopStore,
 		cfg.TracksServiceURL,
+		cfg.EnableGeoTop,
+		cfg.GeohashPrecision,
 	)
 
 	// Start consuming events in background
@@ -113,7 +143,18 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	server := api.NewServer(cfg.HTTPPort, recEngine, userProfileStore, trackStore, globalStatsStore, searchQueryStore)
+	server := api.NewServer(
+		cfg.HTTPPort,
+		recEngine,
+		userProfileStore,
+		trackStore,
+		globalStatsStore,
+		searchQueryStore,
+		geoTopStore,
+		cfg.EnableGeoTop,
+		cfg.GeohashPrecision,
+		cfg.GeoTopDefaultRadiusM,
+	)
 
 	// Add ingest endpoints for testing without Kafka
 	server.AddIngestEndpoints(trackStore, userProfileStore, globalStatsStore)
