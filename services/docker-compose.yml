@@ -323,6 +323,27 @@ services:
       timeout: 10s
       retries: 3
 
+  # PostgreSQL Database for Groups Service
+  postgres-groups:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-groups
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_groups
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_groups_data:/var/lib/postgresql/data
+      - ./groups/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # PostgreSQL Database for Playback Queue Service
   postgres-playback-queue:
     image: postgres:15-alpine
@@ -354,7 +375,7 @@ services:
       - GRPC_PORT=50056
       - DATABASE_URL=postgres://postgres:password@postgres-playback-queue:5432/music_social_playback_queue?sslmode=disable
     ports:
-      - "50056:50056"
+      - "50057:50056"
     depends_on:
       postgres-playback-queue:
         condition: service_healthy
@@ -362,7 +383,36 @@ services:
       - music-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=localhost:50056"]
+      test: ["CMD", "nc", "-z", "localhost", "50056"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Groups Service
+  groups-service:
+    build:
+      context: ./groups
+      dockerfile: Dockerfile
+    container_name: music-social-groups
+    environment:
+      - GRPC_PORT=50058
+      - DATABASE_URL=postgres://postgres:password@postgres-groups:5432/music_social_groups?sslmode=disable
+      - QUEUE_SERVICE_ADDR=playback-queue-service:50056
+      - SUGGESTION_LIMIT=10
+      - SUGGESTION_COOLDOWN_SECONDS=1800
+      - GROUP_LINK_BASE=https://music.local/groups
+    ports:
+      - "50058:50058"
+    depends_on:
+      postgres-groups:
+        condition: service_healthy
+      playback-queue-service:
+        condition: service_started
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50058"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -43,7 +43,7 @@ func (r *Repository) Enqueue(ctx context.Context, item *QueueItem) (err error) {
 		}
 	}()
 
-	if err = r.createStateIfNotExists(ctx, tx, item.Context); err != nil {
+	if err = r.createStateForUserIfNotExists(ctx, tx, item.Context); err != nil {
 		return err
 	}
 
@@ -137,7 +137,7 @@ func (r *Repository) StepNext(ctx context.Context, ref ContextRef) (currentItem 
 		}
 	}()
 
-	if err = r.createStateIfNotExists(ctx, tx, ref); err != nil {
+	if err = r.createStateForUserIfNotExists(ctx, tx, ref); err != nil {
 		return nil, err
 	}
 	current, err := r.currentPositionTx(ctx, tx, ref)
@@ -179,7 +179,7 @@ func (r *Repository) StepPrev(ctx context.Context, ref ContextRef) (prevItem *Qu
 		}
 	}()
 
-	if err = r.createStateIfNotExists(ctx, tx, ref); err != nil {
+	if err = r.createStateForUserIfNotExists(ctx, tx, ref); err != nil {
 		return nil, err
 	}
 	current, err := r.currentPositionTx(ctx, tx, ref)
@@ -239,29 +239,7 @@ func (r *Repository) CurrentTrack(ctx context.Context, ref ContextRef) (*QueueIt
 }
 
 func (r *Repository) RemoveTrack(ctx context.Context, ref ContextRef, trackID uuid.UUID) (bool, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	// Получаем позицию удаляемого трека
-	var position int64
-	err = tx.QueryRowContext(ctx, `SELECT position FROM playback_queue_items WHERE context_key = $1 AND track_id = $2`, ref.Key(), trackID).Scan(&position)
-	if errors.Is(err, sql.ErrNoRows) {
-		_ = tx.Rollback()
-		return false, nil // Трек не найден
-	}
-	if err != nil {
-		return false, err
-	}
-
-	// Удаляем трек
-	result, err := tx.ExecContext(ctx, `DELETE FROM playback_queue_items WHERE context_key = $1 AND track_id = $2`, ref.Key(), trackID)
+	result, err := r.db.ExecContext(ctx, `DELETE FROM playback_queue_items WHERE context_key = $1 AND track_id = $2`, ref.Key(), trackID)
 	if err != nil {
 		return false, err
 	}
@@ -348,15 +326,21 @@ func (r *Repository) currentPositionTx(ctx context.Context, tx *sql.Tx, ref Cont
 	return pos, err
 }
 
-func (r *Repository) createStateIfNotExists(ctx context.Context, tx *sql.Tx, ref ContextRef) error {
-	// Create queue state for any context type if it doesn't exist
-	// This enables lazy initialization for user, session, and group contexts
-	_, err := tx.ExecContext(ctx, `INSERT INTO playback_queue_state (context_type, context_id, context_key, current_position)
+func (r *Repository) createStateForUserIfNotExists(ctx context.Context, tx *sql.Tx, ref ContextRef) error {
+	if strings.EqualFold(ref.ContextType, "user") {
+		_, err := tx.ExecContext(ctx, `INSERT INTO playback_queue_state (context_type, context_id, context_key, current_position)
 	VALUES ($1,$2,$3,0)
 	ON CONFLICT (context_key) DO NOTHING`,
-		ref.ContextType,
-		ref.ContextID,
-		ref.Key(),
-	)
+			ref.ContextType,
+			ref.ContextID,
+			ref.Key(),
+		)
+		return err
+	}
+	var exists int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM playback_queue_state WHERE context_key = $1`, ref.Key()).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrQueueNotFound
+	}
 	return err
 }
