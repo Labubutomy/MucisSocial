@@ -4,16 +4,18 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/engine/scorers"
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/models"
 	"github.com/Labubutomy/MucisSocial/services/recommendations/internal/store"
 )
 
 // RecommendationEngine orchestrates the recommendation pipeline
 type RecommendationEngine struct {
-	Generators []CandidateGenerator
-	Filters    []Filter
-	Scorer     Scorer
-	ReRanker   ReRanker
+	Generators  []CandidateGenerator
+	Filters     []Filter
+	Scorer      Scorer
+	ReRanker    ReRanker
+	GroupScorer *scorers.GroupScorer
 
 	trackStore store.TrackStore
 }
@@ -23,6 +25,7 @@ func NewRecommendationEngine(
 	generators []CandidateGenerator,
 	scorer Scorer,
 	trackStore store.TrackStore,
+	statsStore store.GlobalStatsStore,
 ) *RecommendationEngine {
 	filters := []Filter{
 		NewAlreadyListenedFilter(),
@@ -31,12 +34,15 @@ func NewRecommendationEngine(
 		NewFreshnessFilter(trackStore),
 	}
 
+	groupScorer := scorers.NewGroupScorer(trackStore, statsStore)
+
 	return &RecommendationEngine{
-		Generators: generators,
-		Filters:    filters,
-		Scorer:     scorer,
-		ReRanker:   nil,
-		trackStore: trackStore,
+		Generators:  generators,
+		Filters:     filters,
+		Scorer:      scorer,
+		ReRanker:    nil,
+		GroupScorer: groupScorer,
+		trackStore:  trackStore,
 	}
 }
 
@@ -89,6 +95,108 @@ func (e *RecommendationEngine) Recommend(user *models.UserProfile, req *Recommen
 	}
 
 	return ranked
+}
+
+// GroupRecommendRequest represents a group recommendation request
+type GroupRecommendRequest struct {
+	UserIDs []string
+	Limit   int
+	Filters *FilterOptions
+}
+
+// RecommendForGroup generates recommendations for a group of users
+// Creates a merged profile and generates recommendations that appeal to the majority
+func (e *RecommendationEngine) RecommendForGroup(
+	profiles []*models.UserProfile,
+	req *GroupRecommendRequest,
+) []models.TrackID {
+	if len(profiles) == 0 {
+		return []models.TrackID{}
+	}
+
+	// Step 1: Aggregate user profiles into a group profile
+	groupProfile := models.AggregateProfiles(profiles)
+
+	// Step 2: Generate candidates using the group's aggregated preferences
+	// We'll use a synthetic user profile based on the group's top preferences
+	syntheticProfile := e.createSyntheticProfileFromGroup(groupProfile)
+
+	candidateSet := make(map[models.TrackID]struct{})
+	for _, gen := range e.Generators {
+		candidates := gen.Generate(syntheticProfile)
+		for _, trackID := range candidates {
+			candidateSet[trackID] = struct{}{}
+		}
+	}
+
+	candidates := make([]models.TrackID, 0, len(candidateSet))
+	for trackID := range candidateSet {
+		candidates = append(candidates, trackID)
+	}
+
+	// Step 3: Filter out tracks that majority has already heard
+	candidates = e.filterGroupListenedTracks(groupProfile, candidates)
+
+	// Apply other filters (explicit, genre, freshness)
+	for _, filter := range e.Filters {
+		// Skip the already listened filter for groups
+		if filter.Name() == "already_listened" {
+			continue
+		}
+		candidates = filter.Apply(syntheticProfile, candidates, req.Filters)
+	}
+
+	if len(candidates) == 0 {
+		return []models.TrackID{}
+	}
+
+	// Step 4: Score using group scorer
+	scores := e.GroupScorer.ScoreForGroup(groupProfile, candidates)
+
+	// Step 5: Rank by score
+	ranked := sortByScore(scores)
+
+	// Step 6: Apply limit
+	if len(ranked) > req.Limit {
+		ranked = ranked[:req.Limit]
+	}
+
+	return ranked
+}
+
+// createSyntheticProfileFromGroup creates a user profile representing group preferences
+func (e *RecommendationEngine) createSyntheticProfileFromGroup(group *models.GroupProfile) *models.UserProfile {
+	profile := &models.UserProfile{
+		UserID:            "group_" + group.UserIDs[0], // synthetic ID
+		GenreListenCount:  make(map[string]int),
+		ArtistListenCount: make(map[string]int),
+		ListenedTracks:    make(map[string]struct{}),
+	}
+
+	// Use normalized counts from the group
+	for genre, count := range group.GenreListenCount {
+		profile.GenreListenCount[genre] = count
+	}
+
+	for artist, count := range group.ArtistListenCount {
+		profile.ArtistListenCount[artist] = count
+	}
+
+	return profile
+}
+
+// filterGroupListenedTracks removes tracks that majority of the group has heard
+func (e *RecommendationEngine) filterGroupListenedTracks(
+	group *models.GroupProfile,
+	tracks []models.TrackID,
+) []models.TrackID {
+	result := make([]models.TrackID, 0, len(tracks))
+	for _, trackID := range tracks {
+		if !group.HasListenedByMajority(trackID) {
+			result = append(result, trackID)
+		}
+	}
+	return result
 }
 
 func sortByScore(scores map[models.TrackID]float64) []models.TrackID {

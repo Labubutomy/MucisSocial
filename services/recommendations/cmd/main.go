@@ -108,6 +108,7 @@ func main() {
 		generatorList,
 		scorer,
 		trackStore,
+		globalStatsStore,
 	)
 
 	// Initialize Kafka consumer
