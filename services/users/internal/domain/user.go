@@ -13,6 +13,7 @@ type User struct {
 	Email             string             `json:"email" db:"email"`
 	PasswordHash      string             `json:"-" db:"password_hash"`
 	AvatarURL         *string            `json:"avatar_url" db:"avatar_url"`
+	Coins             int                `json:"coins" db:"coins"`
 	MusicTasteSummary *MusicTasteSummary `json:"music_taste_summary"`
 	CreatedAt         time.Time          `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at" db:"updated_at"`
@@ -27,6 +28,7 @@ type PublicUser struct {
 	ID                string             `json:"id"`
 	Username          string             `json:"username"`
 	AvatarURL         *string            `json:"avatar_url"`
+	Coins             int                `json:"coins"`
 	MusicTasteSummary *MusicTasteSummary `json:"music_taste_summary"`
 }
 
@@ -78,6 +80,7 @@ func (u *User) ToPublicUser() *PublicUser {
 	return &PublicUser{
 		ID:                u.ID,
 		Username:          u.Username,
+		Coins:             u.Coins,
 		AvatarURL:         u.AvatarURL,
 		MusicTasteSummary: u.MusicTasteSummary,
 	}

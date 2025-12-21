@@ -197,3 +197,15 @@ func (h *UserServiceHandler) ClearSearchHistory(ctx context.Context, req *pb.Cle
 		Success: true,
 	}, nil
 }
+
+// Coins methods
+func (h *UserServiceHandler) UpdateCoins(ctx context.Context, req *pb.UpdateCoinsRequest) (*pb.UpdateCoinsResponse, error) {
+	err := h.userService.UpdateCoins(ctx, req.UserId, int(req.CoinsDelta))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to update coins: %v", err)
+	}
+
+	return &pb.UpdateCoinsResponse{
+		Success: true,
+	}, nil
+}

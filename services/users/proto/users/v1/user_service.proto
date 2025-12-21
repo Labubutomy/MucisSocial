@@ -24,6 +24,9 @@ service UserService {
   rpc GetSearchHistory(GetSearchHistoryRequest) returns (GetSearchHistoryResponse);
   rpc AddSearchHistory(AddSearchHistoryRequest) returns (AddSearchHistoryResponse);
   rpc ClearSearchHistory(ClearSearchHistoryRequest) returns (ClearSearchHistoryResponse);
+  
+  // Coins endpoints
+  rpc UpdateCoins(UpdateCoinsRequest) returns (UpdateCoinsResponse);
 }
 
 // Auth Messages
@@ -138,16 +141,18 @@ message User {
   string username = 2;
   string email = 3;
   string avatar_url = 4;
-  MusicTasteSummary music_taste_summary = 5;
-  google.protobuf.Timestamp created_at = 6;
-  google.protobuf.Timestamp updated_at = 7;
+  int32 coins = 5;
+  MusicTasteSummary music_taste_summary = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
 }
 
 message PublicUser {
   string id = 1;
   string username = 2;
   string avatar_url = 3;
-  MusicTasteSummary music_taste_summary = 4;
+  int32 coins = 4;
+  MusicTasteSummary music_taste_summary = 5;
 }
 
 message MusicTasteSummary {
@@ -159,4 +164,14 @@ message SearchHistoryItem {
   string id = 1;
   string query = 2;
   google.protobuf.Timestamp created_at = 3;
+}
+
+// Coins Messages
+message UpdateCoinsRequest {
+  string user_id = 1;
+  int32 coins_delta = 2; // positive to add, negative to subtract
+}
+
+message UpdateCoinsResponse {
+  bool success = 1;
 }

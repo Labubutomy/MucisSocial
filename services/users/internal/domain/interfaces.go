@@ -12,6 +12,7 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	Update(ctx context.Context, user *User) error
 	UpdateMusicTaste(ctx context.Context, userID string, summary *MusicTasteSummary) error
+	UpdateCoins(ctx context.Context, userID string, coinsDelta int) error
 	Delete(ctx context.Context, id string) error
 	EmailExists(ctx context.Context, email string) (bool, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
@@ -57,6 +58,7 @@ type UserService interface {
 	GetUserByID(ctx context.Context, id string) (*PublicUser, error)
 	GetMe(ctx context.Context, userID string) (*User, error)
 	UpdateProfile(ctx context.Context, userID string, req *UpdateProfileRequest) (*User, error)
+	UpdateCoins(ctx context.Context, userID string, coinsDelta int) error
 	SearchUsers(ctx context.Context, query string, limit int) ([]*PublicUser, error)
 }
 

@@ -14,6 +14,7 @@ func convertUserToPB(user *domain.User) *pb.User {
 		Id:        user.ID,
 		Username:  user.Username,
 		Email:     user.Email,
+		Coins:     int32(user.Coins),
 		CreatedAt: timestamppb.New(user.CreatedAt),
 		UpdatedAt: timestamppb.New(user.UpdatedAt),
 	}
@@ -36,6 +37,7 @@ func convertPublicUserToPB(publicUser *domain.PublicUser) *pb.PublicUser {
 	pbUser := &pb.PublicUser{
 		Id:       publicUser.ID,
 		Username: publicUser.Username,
+		Coins:    int32(publicUser.Coins),
 	}
 
 	if publicUser.AvatarURL != nil {

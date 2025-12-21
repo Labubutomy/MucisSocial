@@ -22,7 +22,9 @@ class KafkaService:
 
     def connect_producer(self) -> None:
         """Connect Kafka producer."""
-        print(f"[KafkaService] Connecting producer to brokers: {self.settings.kafka_brokers}")
+        print(
+            f"[KafkaService] Connecting producer to brokers: {self.settings.kafka_brokers}"
+        )
         self.producer = KafkaProducer(
             bootstrap_servers=self.settings.kafka_brokers.split(","),
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -35,6 +37,7 @@ class KafkaService:
         topics = [
             self.settings.kafka_sync_topic,
             self.settings.kafka_messaging_topic,
+            self.settings.kafka_music_requests_topic,
         ]
         self.consumer = KafkaConsumer(
             *topics,
@@ -74,7 +77,9 @@ class KafkaService:
             "server_timestamp": datetime.now().timestamp(),
         }
 
-        print(f"[KafkaService] Sending event to topic {self.settings.kafka_events_topic}: {event}")
+        print(
+            f"[KafkaService] Sending event to topic {self.settings.kafka_events_topic}: {event}"
+        )
 
         future = self.producer.send(
             self.settings.kafka_events_topic,
@@ -92,6 +97,6 @@ class KafkaService:
         except KafkaError as e:
             print(f"[KafkaService] Failed to send event: {e}")
             import traceback
+
             traceback.print_exc()
             raise
-

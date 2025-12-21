@@ -687,6 +687,60 @@ services:
       retries: 3
       start_period: 10s
 
+  # PostgreSQL for Music Requests Service
+  postgres-music-requests:
+    image: postgres:15-alpine
+    container_name: music-social-postgres-music-requests
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: music_social_requests
+    ports:
+      - "5440:5432"
+    volumes:
+      - postgres_music_requests_data:/var/lib/postgresql/data
+      - ./music_requests/sql/001_initial_schema.up.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - music-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Music Requests Service (FastAPI)
+  music-requests-service:
+    build:
+      context: ./music_requests
+    container_name: music-social-music-requests
+    ports:
+      - "8087:8080"
+    environment:
+      - MUSIC_REQUESTS_HOST=0.0.0.0
+      - MUSIC_REQUESTS_PORT=8080
+      - MUSIC_REQUESTS_DATABASE_URL=postgres://postgres:password@postgres-music-requests:5432/music_social_requests?sslmode=disable
+      - MUSIC_REQUESTS_JWT_SECRET=your-super-secret-access-key-change-in-production
+      - MUSIC_REQUESTS_JWT_ALGORITHM=HS256
+      - MUSIC_REQUESTS_GATEWAY_URL=http://api-gateway:8080
+      - MUSIC_REQUESTS_PLAYBACK_QUEUE_GRPC_URL=playback-queue:50056
+      - MUSIC_REQUESTS_COIN_COST_PER_REQUEST=1
+      - MUSIC_REQUESTS_KAFKA_BROKERS=redpanda:9092
+      - MUSIC_REQUESTS_KAFKA_MUSIC_REQUESTS_TOPIC=music-request-events
+    depends_on:
+      postgres-music-requests:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+    networks:
+      - music-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
 volumes:
   postgres_data:
   postgres_artists_data:
@@ -697,6 +751,7 @@ volumes:
   postgres_routes_data:
   postgres_messaging_data:
   postgres_friends_data:
+  postgres_music_requests_data:
 
 networks:
   music-network:

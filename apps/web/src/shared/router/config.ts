@@ -20,6 +20,9 @@ export const routes = {
   routeView: createRoute<{ routeId: string }>(),
   friends: createRoute(),
   messages: createRoute(),
+  // Music requests routes
+  musicRequests: createRoute(),
+  musicRequestSession: createRoute<{ sessionCode: string }>(),
 }
 
 export const mappedRoutes = [
@@ -42,6 +45,9 @@ export const mappedRoutes = [
   { route: routes.routeView, path: '/routes/:routeId' },
   { route: routes.friends, path: '/friends' },
   { route: routes.messages, path: '/messages' },
+  // Music requests routes
+  { route: routes.musicRequests, path: '/music-requests' },
+  { route: routes.musicRequestSession, path: '/request/:sessionCode' },
 ]
 
 export const router = createHistoryRouter({

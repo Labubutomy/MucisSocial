@@ -22,6 +22,8 @@ import { RoutesPage } from '@pages/routes'
 import { RouteViewPage } from '@pages/route-view'
 import { FriendsPage } from '@pages/friends'
 import { MessagesPage } from '@pages/messages'
+import { MusicRequestsPage } from '@pages/music-requests'
+import { MusicRequestSessionPage } from '@pages/music-request-session'
 
 const NotFoundPage = () => (
   <div className="page-container flex min-h-screen flex-col items-center justify-center gap-4 text-center">
@@ -54,6 +56,8 @@ const RoutesView = createRoutesView({
     { route: routes.routeView, view: RouteViewPage },
     { route: routes.friends, view: FriendsPage },
     { route: routes.messages, view: MessagesPage },
+    { route: routes.musicRequests, view: MusicRequestsPage },
+    { route: routes.musicRequestSession, view: MusicRequestSessionPage },
   ],
   otherwise: NotFoundPage,
 })
